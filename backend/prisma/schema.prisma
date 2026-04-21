@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// 用户（与组织关系后续可扩展为成员表）
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects Project[] @relation("ProjectOwner")
+}
+
+/// 项目（Harvest 核心实体之一，字段按迭代补充）
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String?
+  owner       User?    @relation("ProjectOwner", fields: [ownerId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
