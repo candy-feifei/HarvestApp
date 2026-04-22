@@ -22,7 +22,10 @@ export class ProjectsService {
         skip,
         take,
         orderBy: { updatedAt: 'desc' },
-        include: { owner: true },
+        include: {
+          client: true,
+          organization: true,
+        },
       }),
       this.prisma.project.count(),
     ]);

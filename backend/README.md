@@ -14,9 +14,12 @@ Harvest 大赛复刻用 **NestJS 11** 服务：模块化、**Prisma + PostgreSQL
 cd backend
 cp .env.example .env   # Windows 可用 copy；再编辑 DATABASE_URL
 npm install
-npx prisma db push      # 或 prisma migrate dev，见架构说明
+npx prisma migrate deploy   # 首次/新库必须：根据 migrations 建表
+npx prisma db seed         # 可选：插入 demo@harvest.app 与 Demo Organization
 npm run start:dev
 ```
+
+> 若出现 **`The table public.users does not exist`**，说明尚未执行上面的 **`migrate deploy`**（或连到了空库/错库）。
 
 - **Swagger**：启动后访问 `http://localhost:3000/api/docs`
 - **健康检查**：`GET http://localhost:3000/api/health`（无需 JWT）

@@ -35,13 +35,47 @@ class EnvironmentVariables {
   @IsString()
   JWT_EXPIRES_IN?: string;
 
+  /** 自助注册，设为 false 时 POST /auth/register 拒绝 */
   @IsOptional()
   @IsString()
-  AUTH_DEMO_EMAIL?: string;
+  AUTH_ALLOW_REGISTRATION?: string;
 
   @IsOptional()
   @IsString()
-  AUTH_DEMO_PASSWORD?: string;
+  AUTH_MAX_FAILED_LOGINS?: string;
+
+  @IsOptional()
+  @IsString()
+  AUTH_LOCKOUT_MINUTES?: string;
+
+  @IsOptional()
+  @IsString()
+  AUTH_RESET_TOKEN_MINUTES?: string;
+
+  /** 邮件内重置链接、前端站点的公开根 URL，无尾斜杠 */
+  @IsOptional()
+  @IsString()
+  APP_PUBLIC_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  MAIL_FROM?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_HOST?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_PORT?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_USER?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_PASS?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

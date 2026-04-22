@@ -5,13 +5,15 @@ import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
 
+/** 与 seed / bcrypt.hash('demo123', 12) 需一致；e2e 使用 mock 时写死同盐哈希 */
+const DEMO_PASSWORD_HASH =
+  '$2b$12$BiiODdj7unAjqc6hSpN5oOrglxzJb4GbEepiiz2ItS/eKBUDCEmE6';
+
 describe('HarvestApp API (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
     process.env.JWT_SECRET = 'e2e-test-secret';
-    process.env.AUTH_DEMO_EMAIL = 'demo@harvest.app';
-    process.env.AUTH_DEMO_PASSWORD = 'demo123';
 
     const prismaMock = {
       onModuleInit: async () => {},
@@ -19,13 +21,50 @@ describe('HarvestApp API (e2e)', () => {
       $connect: jest.fn().mockResolvedValue(undefined),
       $disconnect: jest.fn().mockResolvedValue(undefined),
       $queryRaw: jest.fn().mockResolvedValue([1]),
+      $transaction: jest.fn().mockImplementation((arg: unknown) => {
+        if (Array.isArray(arg)) {
+          return Promise.all(arg);
+        }
+        if (typeof arg === 'function') {
+          return arg(prismaMock);
+        }
+        return Promise.resolve();
+      }),
       user: {
         findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest
+          .fn()
+          .mockImplementation(
+            (args: { where: { email?: string; id?: string } }) => {
+              const email = args?.where?.email;
+              if (email === 'demo@harvest.app') {
+                return Promise.resolve({
+                  id: 'user-e2e-1',
+                  email: 'demo@harvest.app',
+                  passwordHash: DEMO_PASSWORD_HASH,
+                  failedLoginCount: 0,
+                  lockedUntil: null,
+                });
+              }
+              return Promise.resolve(null);
+            },
+          ),
         count: jest.fn().mockResolvedValue(0),
+        update: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({ id: 'new' }),
       },
       project: {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
+      },
+      loginAttempt: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+      passwordResetToken: {
+        create: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
       },
     };
 

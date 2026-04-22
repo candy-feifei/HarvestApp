@@ -1,13 +1,42 @@
-import { NavLink, useNavigate } from 'react-router-dom'
-import { LogOut, Timer } from 'lucide-react'
-import { appNavItems } from '@/lib/nav-config'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { ChevronDown, LogOut, Timer } from 'lucide-react'
+import {
+  appFooterNavItems,
+  appNavSections,
+} from '@/lib/nav-config'
 import { useAuth } from '@/lib/auth/auth-context'
+import {
+  emailToInitials,
+  parseJwtPayloadJson,
+} from '@/lib/auth/jwt-payload'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
+const brand = {
+  /** 参考线稿主色 */
+  primary: '#0061FF',
+}
+
+function isSidebarItemActive(pathname: string, to: string) {
+  if (to === '/') {
+    return pathname === '/'
+  }
+  if (to === '/clients') {
+    return pathname === '/clients' || pathname.startsWith('/clients/')
+  }
+  return pathname === to || pathname.startsWith(`${to}/`)
+}
+
 export function AppSidebar() {
-  const { logout } = useAuth()
+  const { accessToken, logout } = useAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const payload = parseJwtPayloadJson(accessToken)
+  const email = payload?.email ?? ''
+  const displayName = email
+    ? email.split('@')[0]!.replace(/[._-]/g, ' ')
+    : '用户'
+  const initials = email ? emailToInitials(email) : 'U'
 
   function handleLogout() {
     logout()
@@ -15,43 +44,140 @@ export function AppSidebar() {
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
-        <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-          <Timer className="size-4" aria-hidden />
+    <aside className="flex w-[256px] shrink-0 flex-col border-r border-border bg-white">
+      <button
+        type="button"
+        onClick={() => navigate('/')}
+        className="flex h-[56px] items-center gap-3 border-b border-border px-4 text-left transition-opacity hover:opacity-90"
+      >
+        <div
+          className="flex size-9 items-center justify-center rounded-lg text-white shadow-sm"
+          style={{ backgroundColor: brand.primary }}
+        >
+          <Timer className="size-[18px]" strokeWidth={2} aria-hidden />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">HarvestApp</p>
-          <p className="truncate text-xs text-muted-foreground">复刻骨架</p>
+          <p className="truncate text-[15px] font-semibold tracking-tight text-foreground">
+            HarvestApp
+          </p>
+          <p className="truncate text-xs text-muted-foreground">时间与项目</p>
         </div>
-      </div>
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-        {appNavItems.map((item) => (
-          <NavLink
-            key={item.id}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) =>
-              cn(
-                'rounded-md px-3 py-2 text-sm transition-colors',
-                'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                isActive &&
-                  'bg-sidebar-accent text-sidebar-accent-foreground font-medium',
-              )
-            }
-          >
-            {item.title}
-          </NavLink>
+      </button>
+
+      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
+        {appNavSections.map((section) => (
+          <div key={section.id}>
+            <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+              {section.label}
+            </p>
+            <ul className="flex flex-col gap-0.5">
+              {section.items.map((item) => {
+                const Icon = item.icon
+                const isActive = isSidebarItemActive(pathname, item.to)
+                return (
+                  <li key={item.id}>
+                    <Link
+                      to={item.to}
+                      className={cn(
+                        'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium transition-colors',
+                        !isActive && [
+                          'text-muted-foreground',
+                          'hover:bg-muted/80 hover:text-foreground',
+                        ],
+                        isActive && [
+                          'bg-[#0061FF] font-semibold text-white shadow-sm',
+                        ],
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          'size-[18px] shrink-0',
+                          isActive
+                            ? 'text-white'
+                            : 'text-muted-foreground group-hover:text-foreground',
+                        )}
+                        strokeWidth={1.75}
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1">{item.title}</span>
+                      {item.id === 'approvals' &&
+                        (item.pendingCount ?? 0) > 0 && (
+                          <span
+                            className={cn(
+                              'flex min-w-6 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
+                              isActive
+                                ? 'bg-white/20 text-white'
+                                : 'bg-[#0061FF] text-white',
+                            )}
+                            title="待处理"
+                          >
+                            {item.pendingCount}
+                          </span>
+                        )}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         ))}
       </nav>
-      <div className="border-t border-sidebar-border p-2">
+
+      <div className="space-y-0 border-t border-border px-2 py-2">
+        {appFooterNavItems.map((item) => {
+          const Icon = item.icon
+          const active = isSidebarItemActive(pathname, item.to)
+          return (
+            <Link
+              key={item.id}
+              to={item.to}
+              className={cn(
+                'flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors',
+                active
+                  ? 'font-medium text-[#0061FF]'
+                  : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground',
+              )}
+            >
+              <Icon
+                className="size-4 shrink-0 opacity-90"
+                strokeWidth={1.75}
+                aria-hidden
+              />
+              {item.title}
+            </Link>
+          )
+        })}
+
+        <div className="mt-2 rounded-lg border border-border/80 bg-muted/20 px-2.5 py-2.5">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+              style={{ backgroundColor: brand.primary }}
+            >
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">
+                {displayName}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {email || '已登录'}
+              </p>
+            </div>
+            <ChevronDown
+              className="size-4 shrink-0 text-muted-foreground opacity-60"
+              aria-hidden
+            />
+          </div>
+        </div>
+
         <Button
           type="button"
           variant="ghost"
-          className="w-full justify-start gap-2 text-sidebar-foreground"
+          className="h-9 w-full justify-start gap-2 rounded-lg px-2 text-[13px] font-normal text-muted-foreground hover:bg-muted/80 hover:text-foreground"
           onClick={handleLogout}
         >
-          <LogOut className="size-4" aria-hidden />
+          <LogOut className="size-4" strokeWidth={1.75} aria-hidden />
           退出登录
         </Button>
       </div>

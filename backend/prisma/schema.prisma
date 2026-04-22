@@ -1,30 +1,419 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-/// 用户（与组织关系后续可扩展为成员表）
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --- 1. 组织与多租户 ---
+
+model Organization {
+  id               String   @id @default(uuid())
+  name             String
+  address          String?
+  website          String?
+  /// 组织级默认货币（客户选「与账户一致」时以此为准）
+  defaultCurrency  String   @default("USD") @db.Char(3)
+  lockoutThreshold Int      @default(5)
+  lockoutDuration  Int      @default(30) // 分钟
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  environments      Environment[]
+  users             UserOrganization[]
+  clients           Client[]
+  projects          Project[]
+  tasks             Task[]
+  expenseCategories ExpenseCategory[]
+  roles             Role[]
+
+  @@map("organizations")
+}
+
+model Environment {
+  id             String       @id @default(uuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("environments")
+}
+
+// --- 2. 用户与组织成员 ---
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
+  id           String  @id @default(uuid())
+  email        String  @unique
+  passwordHash String?
+  firstName    String
+  lastName     String
+  avatarUrl    String?
+  timezone     String  @default("UTC")
+
+  emailVerified        Boolean          @default(false)
+  invitationStatus     InvitationStatus @default(INVITED)
+  lastLoginAt          DateTime?
+  failedLoginCount     Int              @default(0) // 与 auth 服务一致
+  lockedUntil          DateTime?
+  invitedAt            DateTime?
+  invitationAcceptedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects Project[] @relation("ProjectOwner")
+  organizations      UserOrganization[]
+  accounts           Account[]
+  timeEntries        TimeEntry[]
+  expenses           Expense[]
+  projectAssignments ProjectAssignment[]
+
+  authAttempts        LoginAttempt[]       @relation("UserAuthAttempts")
+  passwordResetTokens PasswordResetToken[]
+
+  submittedApprovals Approval[] @relation("ApprovalSubmitter")
+  reviewedApprovals  Approval[] @relation("ApprovalApprover")
+
+  @@map("users")
 }
 
-/// 项目（Harvest 核心实体之一，字段按迭代补充）
+model UserOrganization {
+  id              String       @id @default(uuid())
+  userId          String
+  organizationId  String
+  isPinned        Boolean      @default(false)
+  status          MemberStatus @default(ACTIVE)
+  archivedAt      DateTime?
+  inviteToken     String?      @unique
+  inviteExpiresAt DateTime?
+  systemRole      SystemRole   @default(MEMBER)
+  customRoles     Role[]
+
+  managerId    String?
+  manager      UserOrganization?  @relation("ManagerToPeople", fields: [managerId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  subordinates UserOrganization[] @relation("ManagerToPeople")
+
+  weeklyCapacity Int           @default(40)
+  rateHistories  RateHistory[]
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@map("user_organizations")
+}
+
+model RateHistory {
+  id                 String    @id @default(uuid())
+  userOrganizationId String
+  billableRate       Decimal   @db.Decimal(10, 2)
+  costRate           Decimal   @db.Decimal(10, 2)
+  startDate          DateTime
+  endDate            DateTime?
+
+  userOrganization UserOrganization @relation(fields: [userOrganizationId], references: [id], onDelete: Cascade)
+
+  @@index([userOrganizationId, startDate])
+  @@map("rate_histories")
+}
+
+model Role {
+  id             String             @id @default(uuid())
+  name           String
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members        UserOrganization[]
+
+  @@unique([organizationId, name])
+  @@map("roles")
+}
+
+// --- 3. 客户与项目 ---
+
+model Client {
+  id             String  @id @default(uuid())
+  name           String
+  address        String? @db.Text
+  organizationId String
+
+  /// 客户结算货币；null 表示与组织 `defaultCurrency` 一致
+  currency         String?
+  taxRate          Decimal? @db.Decimal(5, 2)
+  secondaryTaxRate Decimal? @db.Decimal(5, 2)
+  discountRate     Decimal? @db.Decimal(5, 2)
+
+  invoiceDueMode InvoiceDueMode @default(UPON_RECEIPT)
+  /// 当 `invoiceDueMode` 为 `NET_DAYS` 时必填（如 15、30、60）
+  invoiceNetDays   Int?
+
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects     Project[]
+  contacts     ClientContact[]
+
+  @@map("clients")
+}
+
+model ClientContact {
+  id        String  @id @default(uuid())
+  clientId  String
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+  title     String?
+  client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("client_contacts")
+}
+
 model Project {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  ownerId     String?
-  owner       User?    @relation("ProjectOwner", fields: [ownerId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String        @id @default(uuid())
+  name          String
+  code          String?
+  isBillable    Boolean       @default(true)
+  billingMethod BillingMethod @default(TM)
+  hourlyRate    Decimal?      @db.Decimal(10, 2)
+  fixedFee      Decimal?      @db.Decimal(18, 2)
+  budgetType    BudgetType    @default(TOTAL_PROJECT_HOURS)
+  budgetAmount  Decimal?      @db.Decimal(18, 2)
+  notifyAt      Int?
+  isArchived    Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  clientId       String
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  assignments  ProjectAssignment[]
+  projectTasks ProjectTask[]
+  timeEntries  TimeEntry[]
+  expenses     Expense[]
+
+  @@map("projects")
+}
+
+model Task {
+  id             String        @id @default(uuid())
+  name           String
+  isCommon       Boolean       @default(false)
+  isArchived     Boolean       @default(false)
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectTasks   ProjectTask[]
+
+  @@map("tasks")
+}
+
+model ProjectTask {
+  id         String   @id @default(uuid())
+  projectId  String
+  taskId     String
+  isBillable Boolean  @default(true)
+  hourlyRate Decimal? @db.Decimal(10, 2)
+
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task        Task        @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  timeEntries TimeEntry[]
+
+  @@unique([projectId, taskId])
+  @@map("project_tasks")
+}
+
+model ProjectAssignment {
+  id                  String   @id @default(uuid())
+  projectId           String
+  userId              String
+  isManager           Boolean  @default(false)
+  projectBillableRate Decimal? @db.Decimal(10, 2)
+  projectCostRate     Decimal? @db.Decimal(10, 2)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_assignments")
+}
+
+// --- 4. 工时、开支、审批 ---
+
+model TimeEntry {
+  id            String      @id @default(uuid())
+  spentDate     DateTime
+  hours         Decimal     @db.Decimal(10, 2)
+  notes         String?     @db.Text
+  status        EntryStatus @default(UNSUBMITTED)
+  isLocked      Boolean     @default(false)
+  userId        String
+  projectId     String
+  projectTaskId String
+  approvalId    String?
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectTask ProjectTask @relation(fields: [projectTaskId], references: [id], onDelete: Restrict)
+  approval    Approval?   @relation(fields: [approvalId], references: [id], onDelete: SetNull)
+
+  @@map("time_entries")
+}
+
+model Expense {
+  id         String      @id @default(uuid())
+  amount     Decimal     @db.Decimal(18, 2)
+  spentDate  DateTime
+  notes      String?
+  receiptUrl String?
+  status     EntryStatus @default(UNSUBMITTED)
+  isLocked   Boolean     @default(false)
+  userId     String
+  projectId  String
+  categoryId String
+  approvalId String?
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  approval Approval?       @relation(fields: [approvalId], references: [id], onDelete: SetNull)
+
+  @@map("expenses")
+}
+
+model ExpenseCategory {
+  id             String       @id @default(uuid())
+  name           String
+  unitName       String?
+  unitPrice      Decimal?     @db.Decimal(10, 2)
+  isArchived     Boolean      @default(false)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses       Expense[]
+
+  @@map("expense_categories")
+}
+
+model Approval {
+  id           String         @id @default(uuid())
+  status       ApprovalStatus @default(PENDING)
+  periodStart  DateTime
+  periodEnd    DateTime
+  submitNotes  String?        @db.Text
+  approverNote String?        @db.Text
+  submitterId  String
+  approverId   String?
+
+  submitter   User        @relation("ApprovalSubmitter", fields: [submitterId], references: [id], onDelete: Cascade)
+  approver    User?       @relation("ApprovalApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  timeEntries TimeEntry[]
+  expenses    Expense[]
+
+  @@map("approvals")
+}
+
+// --- 5. OAuth 与认证审计（沿用原 auth 服务）---
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+/// 登录审计
+model LoginAttempt {
+  id            String   @id @default(uuid())
+  userId        String?
+  email         String
+  ip            String?
+  userAgent     String?
+  success       Boolean
+  failureReason String?
+  createdAt     DateTime @default(now())
+
+  user User? @relation("UserAuthAttempts", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, createdAt])
+  @@index([createdAt])
+  @@map("login_attempts")
+}
+
+/// 密码重置令牌（仅存哈希）
+model PasswordResetToken {
+  id          String    @id @default(uuid())
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  emailSentAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("password_reset_tokens")
+}
+
+// --- 6. 枚举 ---
+
+enum SystemRole {
+  ADMINISTRATOR
+  MANAGER
+  MEMBER
+}
+
+enum InvitationStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum MemberStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum BillingMethod {
+  TM
+  FIXED_FEE
+  NON_BILLABLE
+}
+
+enum BudgetType {
+  TOTAL_PROJECT_HOURS
+  TOTAL_PROJECT_FEES
+  HOURS_PER_PERSON
+  NO_BUDGET
+}
+
+enum EntryStatus {
+  UNSUBMITTED
+  SUBMITTED
+  APPROVED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+/// 客户发票账期方式
+enum InvoiceDueMode {
+  UPON_RECEIPT
+  NET_DAYS
 }
