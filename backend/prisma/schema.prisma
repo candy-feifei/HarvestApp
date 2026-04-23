@@ -208,13 +208,15 @@ model Project {
 }
 
 model Task {
-  id             String        @id @default(uuid())
-  name           String
-  isCommon       Boolean       @default(false)
-  isArchived     Boolean       @default(false)
-  organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  projectTasks   ProjectTask[]
+  id                 String        @id @default(uuid())
+  name               String
+  isCommon           Boolean       @default(false)
+  isArchived         Boolean       @default(false)
+  isBillable         Boolean  @default(true)
+  defaultHourlyRate  Decimal? @db.Decimal(10, 2)
+  organizationId     String
+  organization       Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectTasks       ProjectTask[]
 
   @@map("tasks")
 }
