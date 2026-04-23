@@ -16,6 +16,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { TimeEntriesModule } from './modules/time-entries/time-entries.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { TimeEntriesModule } from './modules/time-entries/time-entries.module';
     TimeEntriesModule,
     ReportsModule,
     ExpensesModule,
+    UploadsModule,
     AccessModule,
     SettingsModule,
   ],

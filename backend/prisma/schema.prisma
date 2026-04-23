@@ -281,6 +281,9 @@ model Expense {
   receiptUrl String?
   status     EntryStatus @default(UNSUBMITTED)
   isLocked   Boolean     @default(false)
+  isBillable     Boolean     @default(true)
+  isReimbursable Boolean     @default(false)
+  unitQuantity   Decimal?    @db.Decimal(18, 4)
   userId     String
   projectId  String
   categoryId String
