@@ -113,9 +113,9 @@ export const appNavSections: AppNavSection[] = [
     items: [
       {
         id: 'approvals',
-        title: '审批',
+        title: 'Approvals',
         to: '/approvals',
-        description: 'Time & expense approvals',
+        description: 'Work hour approval and expense approval',
         icon: CheckCircle2,
         pendingCount: 1,
       },

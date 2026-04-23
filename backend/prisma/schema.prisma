@@ -435,3 +435,20 @@ enum InvoiceDueMode {
   UPON_RECEIPT
   NET_DAYS
 }
+
+/// Approval/report page time granularity
+enum ReportPeriod {
+  DAY
+  WEEK
+  SEMIMONTH
+  MONTH
+  QUARTER
+  CUSTOM
+}
+
+/// Approval page table grouping method
+enum ApprovalsGroupBy {
+  PERSON
+  PROJECT
+  CLIENT
+}

@@ -17,6 +17,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { TimeEntriesModule } from './modules/time-entries/time-entries.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { ApprovalsModule } from './modules/approvals/approvals.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
     UploadsModule,
     AccessModule,
     SettingsModule,
+    ApprovalsModule,
   ],
   providers: [
     {
