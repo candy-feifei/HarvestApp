@@ -1,0 +1,294 @@
+import { useState, type FormEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate } from 'react-router-dom'
+import { ApiError } from '@/lib/api/http'
+import { inviteTeamMember } from '@/features/team/api'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import {
+  fieldWrap,
+  inputCls,
+  labelCls,
+  selectCls,
+} from '@/features/clients/client-form-helpers'
+
+const CAPACITY_OPTIONS = [20, 25, 30, 35, 40, 45, 50, 60] as const
+
+function parseMoney(s: string): number | undefined {
+  const t = s.trim()
+  if (t === '') return undefined
+  const n = Number(t)
+  if (Number.isNaN(n) || n < 0) return undefined
+  return Math.round(n * 100) / 100
+}
+
+export function TeamInvitePage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [workEmail, setWorkEmail] = useState('')
+  const [employeeId, setEmployeeId] = useState('')
+  const [employmentType, setEmploymentType] = useState<
+    'EMPLOYEE' | 'CONTRACTOR'
+  >('EMPLOYEE')
+  const [jobLabel, setJobLabel] = useState('')
+  const [weeklyCapacity, setWeeklyCapacity] = useState(35)
+  const [billable, setBillable] = useState('')
+  const [cost, setCost] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    setFormError(null)
+    setSubmitting(true)
+    try {
+      const res = await inviteTeamMember({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        workEmail: workEmail.trim(),
+        employeeId: employeeId.trim() || undefined,
+        employmentType,
+        jobLabel: jobLabel.trim() || undefined,
+        weeklyCapacity,
+        defaultBillableRatePerHour: parseMoney(billable),
+        costRatePerHour: parseMoney(cost),
+      })
+      await queryClient.invalidateQueries({ queryKey: ['team', 'members'] })
+      navigate('/team', {
+        replace: true,
+        state: { invited: true as const, setPasswordUrl: res.setPasswordUrl },
+      })
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const body = err.body
+        const msg =
+          typeof body === 'object' &&
+          body !== null &&
+          'message' in body
+            ? String((body as { message: unknown }).message)
+            : err.message
+        setFormError(msg || '邀请失败')
+        return
+      }
+      setFormError('网络异常，请稍后重试。')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-lg px-3 py-6 sm:px-4">
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        Invite person
+      </h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        我们将向该同事发送加入团队的邀请邮件（未设置本地密码时会附带「设置密码」链接）。
+      </p>
+
+      <form onSubmit={onSubmit} className="mt-8 space-y-5">
+        {formError ? (
+          <p
+            className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
+            {formError}
+          </p>
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className={fieldWrap}>
+            <label className={labelCls} htmlFor="inv-first">
+              First name
+            </label>
+            <input
+              id="inv-first"
+              className={inputCls}
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              required
+              autoComplete="given-name"
+            />
+          </div>
+          <div className={fieldWrap}>
+            <label className={labelCls} htmlFor="inv-last">
+              Last name
+            </label>
+            <input
+              id="inv-last"
+              className={inputCls}
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              required
+              autoComplete="family-name"
+            />
+          </div>
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls} htmlFor="inv-email">
+            Work email
+          </label>
+          <input
+            id="inv-email"
+            type="email"
+            className={inputCls}
+            value={workEmail}
+            onChange={(e) => setWorkEmail(e.target.value)}
+            required
+            autoComplete="email"
+          />
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls} htmlFor="inv-empid">
+            Employee ID
+          </label>
+          <input
+            id="inv-empid"
+            className={inputCls}
+            value={employeeId}
+            onChange={(e) => setEmployeeId(e.target.value)}
+            autoComplete="off"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            可选。组织内员工唯一标识。
+          </p>
+        </div>
+
+        <div className={fieldWrap}>
+          <span className={labelCls}>Type</span>
+          <div className="mt-1.5 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setEmploymentType('EMPLOYEE')}
+              className={cn(
+                'h-9 flex-1 rounded-md border text-sm font-medium transition-colors',
+                employmentType === 'EMPLOYEE'
+                  ? 'border-primary bg-primary/10 text-foreground'
+                  : 'border-border bg-white text-muted-foreground hover:bg-muted/40',
+              )}
+            >
+              Employee
+            </button>
+            <button
+              type="button"
+              onClick={() => setEmploymentType('CONTRACTOR')}
+              className={cn(
+                'h-9 flex-1 rounded-md border text-sm font-medium transition-colors',
+                employmentType === 'CONTRACTOR'
+                  ? 'border-primary bg-primary/10 text-foreground'
+                  : 'border-border bg-white text-muted-foreground hover:bg-muted/40',
+              )}
+            >
+              Contractor
+            </button>
+          </div>
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls} htmlFor="inv-roles">
+            Roles
+          </label>
+          <input
+            id="inv-roles"
+            className={inputCls}
+            value={jobLabel}
+            onChange={(e) => setJobLabel(e.target.value)}
+            placeholder="例如 Designer, Senior, NYC"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            可选。用于在团队与报表中描述该成员。
+          </p>
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls} htmlFor="inv-cap">
+            Capacity
+          </label>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <select
+              id="inv-cap"
+              className={cn(selectCls, 'max-w-[200px]')}
+              value={weeklyCapacity}
+              onChange={(e) => setWeeklyCapacity(Number(e.target.value))}
+            >
+              {CAPACITY_OPTIONS.map((h) => (
+                <option key={h} value={h}>
+                  {h}
+                  {h === 35 ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm text-muted-foreground">hours per week</span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            可选。该成员每周可工作的小时数。
+          </p>
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls} htmlFor="inv-bill">
+            Default billable rate
+          </label>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">$</span>
+            <input
+              id="inv-bill"
+              className={inputCls}
+              inputMode="decimal"
+              value={billable}
+              onChange={(e) => setBillable(e.target.value)}
+              placeholder="0.00"
+            />
+            <span className="text-sm text-muted-foreground">per hour</span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            可选。向客户计费的默认可计费率，可按项目覆盖。
+          </p>
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls} htmlFor="inv-cost">
+            Cost rate
+          </label>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">$</span>
+            <input
+              id="inv-cost"
+              className={inputCls}
+              inputMode="decimal"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              placeholder="0.00"
+            />
+            <span className="text-sm text-muted-foreground">per hour</span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            可选。内部成本（美元/时）。
+          </p>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 border-border"
+            asChild
+            disabled={submitting}
+          >
+            <Link to="/team">Cancel</Link>
+          </Button>
+          <Button
+            type="submit"
+            className="h-9 bg-primary text-primary-foreground hover:bg-primary/90"
+            disabled={submitting}
+          >
+            {submitting ? '处理中…' : 'Invite and continue'}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}

@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -43,6 +44,80 @@ export class AuthService {
 
   private resetTokenMinutes(): number {
     return Number(this.config.get<string>('AUTH_RESET_TOKEN_MINUTES') ?? 60);
+  }
+
+  private inviteTokenDays(): number {
+    return Number(this.config.get<string>('AUTH_INVITE_TOKEN_DAYS') ?? 7);
+  }
+
+  private resetTokenExpiresAt(): Date {
+    return new Date(Date.now() + this.resetTokenMinutes() * 60_000);
+  }
+
+  private inviteTokenExpiresAt(): Date {
+    return new Date(
+      Date.now() + this.inviteTokenDays() * 24 * 60 * 60 * 1000,
+    );
+  }
+
+  private async createPasswordResetToken(
+    userId: string,
+    expiresAt: Date,
+  ): Promise<{ plain: string; tokenHash: string }> {
+    const plain = randomBytes(32).toString('hex');
+    const tokenHash = this.hashResetToken(plain);
+    await this.prisma.$transaction([
+      this.prisma.passwordResetToken.updateMany({
+        where: { userId, usedAt: null },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.passwordResetToken.create({
+        data: {
+          userId,
+          tokenHash,
+          expiresAt,
+        },
+      }),
+    ]);
+    return { plain, tokenHash };
+  }
+
+  /**
+   * 新成员无本地密码时发送「设置密码」链接；已有密码则发欢迎邮件引导登录。
+   */
+  async sendTeamOnboardingEmail(
+    userId: string,
+    options: { organizationName: string },
+  ): Promise<{ sent: boolean; setPasswordUrl?: string }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+    const publicUrl = this.publicAppUrl();
+    if (!user.passwordHash) {
+      const { plain, tokenHash } = await this.createPasswordResetToken(
+        userId,
+        this.inviteTokenExpiresAt(),
+      );
+      const setPasswordUrl = `${publicUrl}/reset-password?token=${encodeURIComponent(plain)}`;
+      const { sent } = await this.mail.sendTeamInviteEmail(
+        user.email,
+        setPasswordUrl,
+        options,
+      );
+      await this.prisma.passwordResetToken.update({
+        where: { tokenHash },
+        data: { emailSentAt: sent ? new Date() : null },
+      });
+      const isDev = this.config.get<string>('NODE_ENV') !== 'production';
+      return { sent, setPasswordUrl: isDev ? setPasswordUrl : undefined };
+    }
+    const { sent } = await this.mail.sendTeamWelcomeEmail(
+      user.email,
+      `${publicUrl}/login`,
+      options,
+    );
+    return { sent };
   }
 
   private publicAppUrl(): string {
@@ -203,24 +278,10 @@ export class AuthService {
     if (!user?.passwordHash) {
       return generic;
     }
-    const plain = randomBytes(32).toString('hex');
-    const tokenHash = this.hashResetToken(plain);
-    const expiresAt = new Date(
-      Date.now() + this.resetTokenMinutes() * 60_000,
+    const { plain, tokenHash } = await this.createPasswordResetToken(
+      user.id,
+      this.resetTokenExpiresAt(),
     );
-    await this.prisma.$transaction([
-      this.prisma.passwordResetToken.updateMany({
-        where: { userId: user.id, usedAt: null },
-        data: { usedAt: new Date() },
-      }),
-      this.prisma.passwordResetToken.create({
-        data: {
-          userId: user.id,
-          tokenHash,
-          expiresAt,
-        },
-      }),
-    ]);
     const resetUrl = `${this.publicAppUrl()}/reset-password?token=${encodeURIComponent(plain)}`;
     const { sent } = await this.mail.sendPasswordResetEmail(user.email, resetUrl);
     await this.prisma.passwordResetToken.update({

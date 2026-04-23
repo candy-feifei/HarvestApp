@@ -11,9 +11,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      // 开发时把 /api 转到 Nest，避免浏览器跨域；与 `VITE_API_BASE_URL=/api` 配合使用
+      // 与 backend `main.ts` 默认 `PORT=3000` 一致；若用其他端口可设 `VITE_DEV_API_TARGET` 并自行改这里
       '/api': {
-        target: 'http://127.0.0.1:3001',
+        target: process.env.VITE_DEV_API_TARGET ?? 'http://127.0.0.1:3000',
         changeOrigin: true,
       },
     },

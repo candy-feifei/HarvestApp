@@ -36,6 +36,8 @@ npm run prisma:generate
 npm run prisma:studio
 ```
 
+**开发模式说明：** `npm run start:dev` 使用 `tsc --watch` + `node --watch`（避免在 Windows 上 `nest start --watch` 通过 `taskkill` 结束子进程时偶发「进程已不存在」而崩溃）。若仍想使用 Nest CLI 内置监听，可运行 `npm run start:dev:nest`。
+
 ---
 
 基于 [Nest](https://github.com/nestjs/nest) 官方脚手架演进；更多框架能力见 [NestJS 文档](https://docs.nestjs.com)。

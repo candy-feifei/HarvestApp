@@ -36,9 +36,13 @@ const DashboardPage = lazy(() =>
   })),
 )
 
-const OrganizationPage = lazy(() =>
-  import('@/features/organization/pages/organization-page').then((m) => ({
-    default: m.OrganizationPage,
+const TeamPage = lazy(() =>
+  import('@/features/team/pages/team-page').then((m) => ({ default: m.TeamPage })),
+)
+
+const TeamInvitePage = lazy(() =>
+  import('@/features/team/pages/team-invite-page').then((m) => ({
+    default: m.TeamInvitePage,
   })),
 )
 
@@ -63,6 +67,18 @@ const ClientEditPage = lazy(() =>
 const ClientDetailPage = lazy(() =>
   import('@/features/clients/pages/client-detail-page').then((m) => ({
     default: m.ClientDetailPage,
+  })),
+)
+
+const NewClientContactPage = lazy(() =>
+  import('@/features/clients/pages/new-client-contact-page').then((m) => ({
+    default: m.NewClientContactPage,
+  })),
+)
+
+const ClientContactEditPage = lazy(() =>
+  import('@/features/clients/pages/client-contact-edit-page').then((m) => ({
+    default: m.ClientContactEditPage,
   })),
 )
 
@@ -129,7 +145,7 @@ const SettingsPage = lazy(() =>
 const lazyModuleRoot = {
   time: TimePage,
   expenses: ExpensesPage,
-  team: OrganizationPage,
+  team: TeamPage,
   clients: ClientsPage,
   projects: ProjectsPage,
   tasks: TasksPage,
@@ -211,10 +227,34 @@ export const appRouter = createBrowserRouter([
         ),
       },
       {
+        path: 'clients/:clientId/contacts/new',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <NewClientContactPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'clients/:clientId/contacts/:contactId/edit',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <ClientContactEditPage />
+          </Suspense>
+        ),
+      },
+      {
         path: 'clients/:clientId',
         element: (
           <Suspense fallback={<PageLoading />}>
             <ClientDetailPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'team/invite',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <TeamInvitePage />
           </Suspense>
         ),
       },

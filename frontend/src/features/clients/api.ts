@@ -41,10 +41,30 @@ export function createClient(body: CreateClientPayload) {
   })
 }
 
+export function updateClient(id: string, body: CreateClientPayload) {
+  return apiRequest<{
+    id: string
+    name: string
+    resolvedCurrency: string
+  }>(`/clients/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}
+
+export type ClientContactListItem = {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  title: string | null
+}
+
 export type ClientListItem = {
   id: string
   name: string
   contactCount: number
+  contacts: ClientContactListItem[]
 }
 
 export function listClients(q?: string) {
@@ -70,8 +90,67 @@ export type ClientDetail = {
   createdAt: string
   updatedAt: string
   resolvedCurrency: string
+  /** 未归档项目，用于编辑页侧栏 */
+  activeProjects?: { id: string; name: string }[]
 }
 
 export function fetchClient(id: string) {
   return apiRequest<ClientDetail>(`/clients/${id}`, { method: 'GET' })
+}
+
+export type CreateClientContactPayload = {
+  firstName: string
+  lastName: string
+  email: string
+  title?: string
+  officeNumber?: string
+  mobileNumber?: string
+  faxNumber?: string
+}
+
+export function createClientContact(
+  clientId: string,
+  body: CreateClientContactPayload,
+) {
+  return apiRequest<{
+    id: string
+    clientId: string
+    firstName: string
+    lastName: string
+    email: string
+    clientName: string
+  }>(`/clients/${clientId}/contacts`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export type ClientContactDetail = {
+  id: string
+  clientId: string
+  firstName: string
+  lastName: string
+  email: string
+  title: string | null
+  officeNumber: string | null
+  faxNumber: string | null
+  mobileNumber: string | null
+}
+
+export function fetchClientContact(clientId: string, contactId: string) {
+  return apiRequest<ClientContactDetail>(
+    `/clients/${clientId}/contacts/${contactId}`,
+    { method: 'GET' },
+  )
+}
+
+export function updateClientContact(
+  clientId: string,
+  contactId: string,
+  body: CreateClientContactPayload,
+) {
+  return apiRequest<{ id: string; clientId: string }>(
+    `/clients/${clientId}/contacts/${contactId}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
+  )
 }

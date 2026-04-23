@@ -94,8 +94,13 @@ model UserOrganization {
   manager      UserOrganization?  @relation("ManagerToPeople", fields: [managerId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   subordinates UserOrganization[] @relation("ManagerToPeople")
 
-  weeklyCapacity Int           @default(40)
-  rateHistories  RateHistory[]
+  weeklyCapacity  Int            @default(40)
+  /// 可选。组织内员工工号/唯一标识
+  employeeId      String?
+  employmentType  EmploymentType @default(EMPLOYEE)
+  /// 可选。自由文本，如「Designer, Senior」
+  jobLabel        String?
+  rateHistories   RateHistory[]
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -164,8 +169,11 @@ model ClientContact {
   firstName String
   lastName  String
   email     String
-  phone     String?
-  title     String?
+  /// 手机；与 office / fax 分开存储
+  phone         String?
+  title         String?
+  officeNumber  String?
+  faxNumber     String?
   client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@map("client_contacts")
@@ -373,6 +381,11 @@ enum SystemRole {
   ADMINISTRATOR
   MANAGER
   MEMBER
+}
+
+enum EmploymentType {
+  EMPLOYEE
+  CONTRACTOR
 }
 
 enum InvitationStatus {

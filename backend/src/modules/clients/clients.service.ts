@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../prisma/prisma.service'
 import type { ActiveMembership } from '../organization/organization-context.service'
 import { CreateClientDto } from './dto/create-client.dto'
+import { CreateClientContactDto } from './dto/create-client-contact.dto'
 
 function toDecimal(n: number): Prisma.Decimal {
   return new Prisma.Decimal(n)
@@ -29,6 +30,8 @@ export class ClientsService {
                 { firstName: { contains: trimmed, mode: 'insensitive' } },
                 { lastName: { contains: trimmed, mode: 'insensitive' } },
                 { email: { contains: trimmed, mode: 'insensitive' } },
+                { title: { contains: trimmed, mode: 'insensitive' } },
+                { phone: { contains: trimmed, mode: 'insensitive' } },
               ],
             },
           },
@@ -42,6 +45,16 @@ export class ClientsService {
         id: true,
         name: true,
         _count: { select: { contacts: true } },
+        contacts: {
+          orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            title: true,
+          },
+        },
       },
     })
     return {
@@ -49,21 +62,174 @@ export class ClientsService {
         id: r.id,
         name: r.name,
         contactCount: r._count.contacts,
+        contacts: r.contacts,
       })),
     }
   }
 
+  async getContact(
+    membership: ActiveMembership,
+    clientId: string,
+    contactId: string,
+  ) {
+    const contact = await this.prisma.clientContact.findFirst({
+      where: {
+        id: contactId,
+        clientId,
+        client: {
+          organizationId: membership.organizationId,
+          isArchived: false,
+        },
+      },
+    })
+    if (!contact) {
+      throw new NotFoundException('未找到该联系人或无权访问')
+    }
+    return {
+      id: contact.id,
+      clientId: contact.clientId,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      email: contact.email,
+      title: contact.title,
+      officeNumber: (contact as { officeNumber?: string | null }).officeNumber ?? null,
+      faxNumber: (contact as { faxNumber?: string | null }).faxNumber ?? null,
+      mobileNumber: contact.phone,
+    }
+  }
+
+  async updateContact(
+    membership: ActiveMembership,
+    clientId: string,
+    contactId: string,
+    dto: CreateClientContactDto,
+  ) {
+    const existing = await this.prisma.clientContact.findFirst({
+      where: {
+        id: contactId,
+        clientId,
+        client: {
+          organizationId: membership.organizationId,
+        },
+      },
+    })
+    if (!existing) {
+      throw new NotFoundException('未找到该联系人或无权访问')
+    }
+    const c = await this.prisma.clientContact.update({
+      where: { id: contactId },
+      data: {
+        firstName: dto.firstName.trim(),
+        lastName: dto.lastName.trim(),
+        email: dto.email.trim().toLowerCase(),
+        title: dto.title?.trim() || null,
+        phone: dto.mobileNumber?.trim() || null,
+        officeNumber: dto.officeNumber?.trim() || null,
+        faxNumber: dto.faxNumber?.trim() || null,
+      } as any,
+    })
+    return { id: c.id, clientId: c.clientId }
+  }
+
   async getOne(membership: ActiveMembership, id: string) {
-    const client = await this.prisma.client.findFirst({
+    const row = await this.prisma.client.findFirst({
       where: {
         id,
         organizationId: membership.organizationId,
         isArchived: false,
       },
+      include: {
+        projects: {
+          where: { isArchived: false },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+        },
+      },
+    })
+    if (!row) {
+      throw new NotFoundException('未找到该客户或无权访问')
+    }
+    const { projects, ...client } = row
+    return {
+      ...this.withResolvedCurrency(
+        client,
+        membership.organization.defaultCurrency,
+      ),
+      activeProjects: projects,
+    }
+  }
+
+  async createContact(
+    membership: ActiveMembership,
+    clientId: string,
+    dto: CreateClientContactDto,
+  ) {
+    const client = await this.prisma.client.findFirst({
+      where: {
+        id: clientId,
+        organizationId: membership.organizationId,
+        isArchived: false,
+      },
+      select: { id: true, name: true },
     })
     if (!client) {
       throw new NotFoundException('未找到该客户或无权访问')
     }
+    const contact = await this.prisma.clientContact.create({
+      data: {
+        clientId,
+        firstName: dto.firstName.trim(),
+        lastName: dto.lastName.trim(),
+        email: dto.email.trim().toLowerCase(),
+        title: dto.title?.trim() || null,
+        phone: dto.mobileNumber?.trim() || null,
+        officeNumber: dto.officeNumber?.trim() || null,
+        faxNumber: dto.faxNumber?.trim() || null,
+      },
+    })
+    return { ...contact, clientName: client.name }
+  }
+
+  async update(membership: ActiveMembership, id: string, dto: CreateClientDto) {
+    const existing = await this.prisma.client.findFirst({
+      where: {
+        id,
+        organizationId: membership.organizationId,
+        isArchived: false,
+      },
+      select: { id: true },
+    })
+    if (!existing) {
+      throw new NotFoundException('未找到该客户或无权访问')
+    }
+    if (dto.invoiceDueMode === 'NET_DAYS') {
+      if (dto.invoiceNetDays == null) {
+        throw new BadRequestException('选择「发票后 N 天」时必须填写天数')
+      }
+    } else if (dto.invoiceNetDays != null) {
+      throw new BadRequestException('仅「发票后 N 天」模式可填写 invoiceNetDays')
+    }
+    if (dto.secondaryTaxEnabled && dto.secondaryTaxRate == null) {
+      throw new BadRequestException('启用第二税率时必须填写第二税率')
+    }
+    const secondaryRate =
+      dto.secondaryTaxEnabled && dto.secondaryTaxRate != null
+        ? toDecimal(dto.secondaryTaxRate)
+        : null
+    const client = await this.prisma.client.update({
+      where: { id },
+      data: {
+        name: dto.name.trim(),
+        address: dto.address?.trim() || null,
+        currency: dto.currency ?? null,
+        taxRate: dto.taxRate != null ? toDecimal(dto.taxRate) : null,
+        secondaryTaxRate: secondaryRate,
+        discountRate: dto.discountRate != null ? toDecimal(dto.discountRate) : null,
+        invoiceDueMode: dto.invoiceDueMode,
+        invoiceNetDays:
+          dto.invoiceDueMode === 'NET_DAYS' ? dto.invoiceNetDays! : null,
+      },
+    })
     return this.withResolvedCurrency(
       client,
       membership.organization.defaultCurrency,

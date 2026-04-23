@@ -52,6 +52,11 @@ class EnvironmentVariables {
   @IsString()
   AUTH_RESET_TOKEN_MINUTES?: string;
 
+  /** 团队邀请邮件中「设置密码」链接有效天数，默认 7 */
+  @IsOptional()
+  @IsString()
+  AUTH_INVITE_TOKEN_DAYS?: string;
+
   /** 邮件内重置链接、前端站点的公开根 URL，无尾斜杠 */
   @IsOptional()
   @IsString()

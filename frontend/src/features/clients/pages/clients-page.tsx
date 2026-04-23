@@ -7,45 +7,93 @@ import { listClients, type ClientListItem } from '@/features/clients/api'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-type ClientRowProps = {
+function contactSubline(title: string | null, email: string) {
+  if (title?.trim()) {
+    return `${title.trim()}, ${email}`
+  }
+  return email
+}
+
+type ClientBlockProps = {
   client: ClientListItem
 }
 
-function ClientRow({ client }: ClientRowProps) {
+function ClientBlock({ client }: ClientBlockProps) {
+  const contacts = client.contacts ?? []
+
   return (
     <div
       className={cn(
-        'flex min-h-[56px] items-center justify-between gap-3 border border-border bg-white px-3 py-2.5 sm:px-4',
-        'rounded-md shadow-sm',
-        'hover:border-border hover:bg-muted/20',
+        'overflow-hidden rounded-md border border-border bg-white shadow-sm',
+        'hover:border-border',
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
+      <div
+        className={cn(
+          'flex min-h-[56px] items-center justify-between gap-3 px-3 py-2.5 sm:px-4',
+          'hover:bg-muted/10',
+        )}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 border-border px-2.5 text-[13px] font-normal text-foreground hover:bg-muted/60"
+            asChild
+          >
+            <Link to={`/clients/${client.id}/edit`}>Edit</Link>
+          </Button>
+          <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground sm:text-base">
+            {client.name}
+          </p>
+        </div>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 shrink-0 border-border px-2.5 text-[13px] font-normal text-foreground hover:bg-muted/60"
+          className="h-8 shrink-0 gap-1 border-border px-2.5 text-[13px] font-normal text-foreground hover:bg-muted/60"
           asChild
         >
-          <Link to={`/clients/${client.id}/edit`}>Edit</Link>
+          <Link to={`/clients/${client.id}/contacts/new`}>
+            <Plus className="size-3.5" strokeWidth={2.5} aria-hidden />
+            Add contact
+          </Link>
         </Button>
-        <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground sm:text-base">
-          {client.name}
-        </p>
       </div>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-8 shrink-0 gap-1 border-border px-2.5 text-[13px] font-normal text-foreground hover:bg-muted/60"
-        asChild
-      >
-        <Link to={`/clients/${client.id}`}>
-          <Plus className="size-3.5" strokeWidth={2.5} aria-hidden />
-          Add contact
-        </Link>
-      </Button>
+
+      {contacts.length > 0 && (
+        <div className="border-t border-border">
+          {contacts.map((ct) => (
+            <div
+              key={ct.id}
+              className="flex min-h-[48px] items-center gap-2 border-b border-border/60 bg-muted/[0.15] px-3 py-2.5 last:border-b-0 sm:gap-4 sm:px-4"
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 self-start border-border px-2.5 text-[13px] font-normal text-foreground hover:bg-muted/60"
+                asChild
+              >
+                <Link
+                  to={`/clients/${client.id}/contacts/${ct.id}/edit`}
+                >
+                  Edit
+                </Link>
+              </Button>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-medium text-foreground">
+                  {ct.firstName} {ct.lastName}
+                </p>
+                <p className="text-xs text-muted-foreground sm:text-sm">
+                  {contactSubline(ct.title, ct.email)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -122,7 +170,7 @@ export function ClientsPage() {
           ) : null}
           {items.map((c) => (
             <li key={c.id}>
-              <ClientRow client={c} />
+              <ClientBlock client={c} />
             </li>
           ))}
         </ul>

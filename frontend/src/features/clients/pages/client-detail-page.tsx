@@ -36,7 +36,14 @@ export function ClientDetailPage() {
           {data.name}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          客户详情与「添加联系人」将在此页扩展；当前为占位。
+          管理该客户的项目与{' '}
+          <Link
+            to={`/clients/${clientId}/contacts/new`}
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            添加联系人
+          </Link>
+          。
         </p>
       </div>
     </div>
