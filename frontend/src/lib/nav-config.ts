@@ -80,9 +80,9 @@ export const appNavSections: AppNavSection[] = [
       },
       {
         id: 'tasks',
-        title: '任务',
+        title: 'Tasks',
         to: '/tasks',
-        description: '企业任务库与项目任务',
+        description: 'Organization task list and project tasks',
         icon: ListChecks,
       },
     ],

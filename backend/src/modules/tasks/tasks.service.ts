@@ -42,14 +42,14 @@ export class TasksService {
       where: { id, organizationId: membership.organizationId },
     })
     if (!task) {
-      throw new NotFoundException('未找到该任务或无权访问')
+      throw new NotFoundException('Task not found or access denied')
     }
     return task
   }
 
   /**
-   * 创建新项目时调用：为项目追加当前组织的全部「通用、未归档」任务。
-   * 供 Projects 模块在创建 `Project` 后注入。
+   * Call after creating a project: adds all common, non-archived org tasks to the project.
+   * Intended for injection from the Projects module after `Project` is created.
    */
   async attachCommonTasksToNewProject(organizationId: string, projectId: string) {
     const commonTasks = await this.prisma.task.findMany({
@@ -100,7 +100,7 @@ export class TasksService {
   async getOne(membership: ActiveMembership, id: string) {
     const task = await this.getOrgTask(membership, id)
     if (task.isArchived) {
-      throw new NotFoundException('该任务已归档')
+      throw new NotFoundException('This task is archived')
     }
     return this.mapTaskRow(task)
   }
@@ -108,7 +108,7 @@ export class TasksService {
   async create(membership: ActiveMembership, dto: CreateTaskDto) {
     const name = dto.name.trim()
     if (!name) {
-      throw new BadRequestException('任务名称不能为空')
+      throw new BadRequestException('Task name is required')
     }
     const task = await this.prisma.task.create({
       data: {
@@ -155,12 +155,12 @@ export class TasksService {
   async update(membership: ActiveMembership, id: string, dto: UpdateTaskDto) {
     const current = await this.getOrgTask(membership, id)
     if (current.isArchived) {
-      throw new BadRequestException('已归档任务不可编辑，请先恢复或新建')
+      throw new BadRequestException('Archived tasks cannot be edited')
     }
     if (dto.name != null) {
       const t = dto.name.trim()
       if (!t) {
-        throw new BadRequestException('任务名称不能为空')
+        throw new BadRequestException('Task name is required')
       }
     }
     const data: Prisma.TaskUpdateInput = {}
@@ -208,7 +208,7 @@ export class TasksService {
       return { updated: 0 }
     }
     if (ids.length > 200) {
-      throw new BadRequestException('一次最多处理 200 个任务')
+      throw new BadRequestException('At most 200 tasks per batch')
     }
     const result = await this.prisma.task.updateMany({
       where: {
@@ -228,9 +228,11 @@ export class TasksService {
       include: { timeEntries: { take: 1 } },
     })
     if (withUsage?.timeEntries.length) {
-      throw new BadRequestException('该任务已有工时记录，请使用「归档」而非删除')
+      throw new BadRequestException(
+        'This task has time entries; archive it instead of deleting',
+      )
     }
-    // 仍可能有无工时的项目关联
+    // May still have project links with no time entries
     await this.prisma.$transaction([
       this.prisma.projectTask.deleteMany({ where: { taskId: t.id } }),
       this.prisma.task.delete({ where: { id: t.id } }),
@@ -238,9 +240,7 @@ export class TasksService {
     return { id: t.id, deleted: true as const }
   }
 
-  /**
-   * 与 list 同筛选；用于导出。
-   */
+  /** Same filters as list; used for export. */
   async getRowsForExport(membership: ActiveMembership, q?: string) {
     const trimmed = q?.trim() ?? ''
     const where: Prisma.TaskWhereInput = {

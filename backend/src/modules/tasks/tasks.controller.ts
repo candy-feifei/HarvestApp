@@ -31,8 +31,8 @@ export class TasksController {
 
   @Get()
   @ApiHeader({ name: 'X-Organization-Id', required: false })
-  @ApiOperation({ summary: '组织任务：Common / Other 分类列表' })
-  @ApiQuery({ name: 'q', required: false, description: '按名称包含筛选' })
+  @ApiOperation({ summary: 'List tasks split into：Common / Other' })
+  @ApiQuery({ name: 'q', required: false, description: 'Filter by name (contains)' })
   async list(
     @CurrentUser() user: CurrentUserPayload,
     @Headers('x-organization-id') xOrganizationId: string | undefined,
@@ -47,7 +47,7 @@ export class TasksController {
 
   @Get('export')
   @ApiHeader({ name: 'X-Organization-Id', required: false })
-  @ApiOperation({ summary: '导出组织任务' })
+  @ApiOperation({ summary: 'Export organization tasks' })
   @ApiQuery({ name: 'q', required: false })
   @ApiQuery({ name: 'format', required: false, enum: ['csv', 'json'] })
   async exportList(
@@ -75,7 +75,7 @@ export class TasksController {
 
   @Get(':id')
   @ApiHeader({ name: 'X-Organization-Id', required: false })
-  @ApiOperation({ summary: '单个任务' })
+  @ApiOperation({ summary: 'Get one task' })
   async getOne(
     @CurrentUser() user: CurrentUserPayload,
     @Headers('x-organization-id') xOrganizationId: string | undefined,
@@ -90,7 +90,7 @@ export class TasksController {
 
   @Post()
   @ApiHeader({ name: 'X-Organization-Id', required: false })
-  @ApiOperation({ summary: '新建任务' })
+  @ApiOperation({ summary: 'Create task' })
   async create(
     @CurrentUser() user: CurrentUserPayload,
     @Headers('x-organization-id') xOrganizationId: string | undefined,
@@ -105,7 +105,7 @@ export class TasksController {
 
   @Post('batch/archive')
   @ApiHeader({ name: 'X-Organization-Id', required: false })
-  @ApiOperation({ summary: '批量归档' })
+  @ApiOperation({ summary: 'Bulk archive' })
   async bulkArchive(
     @CurrentUser() user: CurrentUserPayload,
     @Headers('x-organization-id') xOrganizationId: string | undefined,
@@ -120,7 +120,7 @@ export class TasksController {
 
   @Patch(':id')
   @ApiHeader({ name: 'X-Organization-Id', required: false })
-  @ApiOperation({ summary: '更新任务' })
+  @ApiOperation({ summary: 'Update task' })
   async update(
     @CurrentUser() user: CurrentUserPayload,
     @Headers('x-organization-id') xOrganizationId: string | undefined,
@@ -136,7 +136,7 @@ export class TasksController {
 
   @Post(':id/archive')
   @ApiHeader({ name: 'X-Organization-Id', required: false })
-  @ApiOperation({ summary: '归档任务' })
+  @ApiOperation({ summary: 'Archive task' })
   async archive(
     @CurrentUser() user: CurrentUserPayload,
     @Headers('x-organization-id') xOrganizationId: string | undefined,
@@ -151,7 +151,7 @@ export class TasksController {
 
   @Delete(':id')
   @ApiHeader({ name: 'X-Organization-Id', required: false })
-  @ApiOperation({ summary: '删除任务（无工时 & 可移除项目关联时）' })
+  @ApiOperation({ summary: 'Delete task (when no time entries; project links are removed)' })
   async remove(
     @CurrentUser() user: CurrentUserPayload,
     @Headers('x-organization-id') xOrganizationId: string | undefined,

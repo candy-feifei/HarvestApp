@@ -12,29 +12,39 @@ import {
 } from 'class-validator'
 
 export class CreateTaskDto {
-  @ApiProperty({ example: '设计' })
+  @ApiProperty({ example: 'Design' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)
   name!: string
 
-  @ApiProperty({ description: '是否为组织级通用任务（会加入新项目的默认任务集）' })
+  @ApiProperty({
+    description:
+      'Whether this is an organization-wide common task (included in new projects by default)',
+  })
   @IsBoolean()
   isCommon!: boolean
 
-  @ApiProperty({ description: '新工时/加入项目时是否默认可计费' })
+  @ApiProperty({ description: 'Whether new time entries / project links are billable by default' })
   @IsBoolean()
   isBillable!: boolean
 
-  @ApiPropertyOptional({ description: '默认可计费时薪；未填则由项目/客户覆盖' })
+  @ApiPropertyOptional({
+    description: 'Default billable hourly rate; project/client may override if unset',
+  })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'defaultHourlyRate 需为有效金额' })
-  @Min(0, { message: '时薪不能为负数' })
-  @Max(1_000_000, { message: '时薪超出上限' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'defaultHourlyRate must be a valid amount' },
+  )
+  @Min(0, { message: 'Hourly rate cannot be negative' })
+  @Max(1_000_000, { message: 'Hourly rate exceeds the maximum' })
   defaultHourlyRate?: number
 
-  @ApiPropertyOptional({ description: '将本任务补录到所有现有非归档项目' })
+  @ApiPropertyOptional({
+    description: 'Add this task to all existing non-archived projects in the org',
+  })
   @IsOptional()
   @IsBoolean()
   addToAllExistingProjects?: boolean

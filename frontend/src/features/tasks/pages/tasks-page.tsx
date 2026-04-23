@@ -97,7 +97,7 @@ function TaskRow({
         await archiveTask(task.id)
       } else if (op === 'delete') {
         const ok = window.confirm(
-          '确定要删除此任务？若已有工时，请先归档。',
+          'Delete this task? If it has time entries, archive it instead.',
         )
         if (!ok) {
           setBusy(false)
@@ -115,7 +115,7 @@ function TaskRow({
         setErr(e.message)
         return
       }
-      setErr('操作失败，请稍后重试。')
+      setErr('Something went wrong. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -140,8 +140,8 @@ function TaskRow({
             checked={selected}
             onChange={() => onToggleSelect(task.id)}
             className="size-4 rounded border-border text-primary"
-            title="选择本行"
-            aria-label={`选择 ${task.name}`}
+            title="Select row"
+            aria-label={`Select ${task.name}`}
           />
         </label>
         <div className="min-w-0">
@@ -187,7 +187,7 @@ function TaskRow({
                   onEdit(task)
                 }}
               >
-                编辑
+                Edit
               </button>
               {section === 'common' ? (
                 <button
@@ -196,7 +196,7 @@ function TaskRow({
                   className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
                   onClick={() => void run('move')}
                 >
-                  移入 Other tasks
+                  Move to Other tasks
                 </button>
               ) : (
                 <button
@@ -205,7 +205,7 @@ function TaskRow({
                   className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
                   onClick={() => void run('move')}
                 >
-                  移入 Common tasks
+                  Move to Common tasks
                 </button>
               )}
               <button
@@ -214,7 +214,7 @@ function TaskRow({
                 className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
                 onClick={() => void run('archive')}
               >
-                归档
+                Archive
               </button>
               <button
                 type="button"
@@ -222,7 +222,7 @@ function TaskRow({
                 className="w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/5"
                 onClick={() => void run('delete')}
               >
-                删除
+                Delete
               </button>
             </div>
           ) : null}
@@ -271,7 +271,7 @@ function TaskBlock({
       </div>
       {tasks.length === 0 ? (
         <div className="rounded-md border border-dashed border-border bg-muted/15 px-4 py-8 text-center text-sm text-muted-foreground">
-          暂无此类任务
+          No tasks in this section
         </div>
       ) : (
         <div className="overflow-visible rounded-md border border-border bg-white shadow-sm">
@@ -393,7 +393,7 @@ export function TasksPage() {
     error instanceof ApiError
       ? error.message
       : error
-        ? '无法加载任务列表。'
+        ? 'Could not load tasks.'
         : null
 
   const common = data?.common ?? []
@@ -477,14 +477,14 @@ export function TasksPage() {
     setFormError(null)
     const tname = name.trim()
     if (!tname) {
-      setFormError('请填写任务名称。')
+      setFormError('Please enter a task name.')
       return
     }
     let defaultHourlyRate: number | undefined
     if (rate.trim() !== '') {
       const n = Number(rate)
       if (Number.isNaN(n) || n < 0) {
-        setFormError('时薪为无效数字。')
+        setFormError('Default rate is not a valid number.')
         return
       }
       defaultHourlyRate = n
@@ -492,7 +492,7 @@ export function TasksPage() {
     if (editingId) {
       const currentRow = [...common, ...other].find((t) => t.id === editingId)
       if (!currentRow) {
-        setFormError('任务已不在列表，请重试。')
+        setFormError('Task is no longer in the list. Please try again.')
         return
       }
       let payloadDefaultRate: number | null | undefined
@@ -523,7 +523,7 @@ export function TasksPage() {
             if (x instanceof ApiError) {
               setFormError(x.message)
             } else {
-              setFormError('保存失败。')
+              setFormError('Could not save changes.')
             }
           },
         },
@@ -543,7 +543,7 @@ export function TasksPage() {
           if (x instanceof ApiError) {
             setFormError(x.message)
           } else {
-            setFormError('创建失败。')
+            setFormError('Could not create task.')
           }
         },
       },
@@ -562,7 +562,7 @@ export function TasksPage() {
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          任务
+          Tasks
         </h1>
         <div className="flex flex-col gap-2 self-stretch sm:max-w-none sm:flex-row sm:items-center sm:gap-2">
           <Button
@@ -571,7 +571,7 @@ export function TasksPage() {
             onClick={startNew}
           >
             <Plus className="size-4" aria-hidden />
-            新建任务
+            New task
           </Button>
           <div className="relative self-end sm:self-auto" ref={exportRef}>
             <Button
@@ -607,7 +607,7 @@ export function TasksPage() {
                     }
                   }}
                 >
-                  导出为 CSV
+                  Export as CSV
                 </button>
                 <button
                   type="button"
@@ -624,7 +624,7 @@ export function TasksPage() {
                     }
                   }}
                 >
-                  导出为 JSON
+                  Export as JSON
                 </button>
               </div>
             ) : null}
@@ -670,7 +670,7 @@ export function TasksPage() {
               className="text-sm font-medium text-foreground"
               htmlFor="task-name"
             >
-              任务名称
+              Task name
             </label>
             <input
               id="task-name"
@@ -684,7 +684,7 @@ export function TasksPage() {
               className="text-sm font-medium text-foreground"
               htmlFor="task-rate"
             >
-              默认可计费时薪
+              Default billable rate
             </label>
             <div className="flex max-w-sm flex-col gap-1.5 sm:flex-row sm:items-baseline sm:gap-2">
               <div className="flex flex-1 items-baseline gap-1">
@@ -703,12 +703,12 @@ export function TasksPage() {
                   onChange={(e) => setRate(e.target.value)}
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
-                  每小时
+                  per hour
                 </span>
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              为任务设置默认可计费时薪有助于报表更准确。
+              A default rate helps keep reports accurate.
             </p>
           </div>
           <div className="space-y-2.5 text-sm text-foreground">
@@ -719,7 +719,7 @@ export function TasksPage() {
                 checked={isBillable}
                 onChange={(e) => setIsBillable(e.target.checked)}
               />
-              <span>本任务在默认情况下为可计费</span>
+              <span>This task is billable by default</span>
             </label>
             <label className="flex cursor-pointer items-start gap-2.5">
               <input
@@ -729,7 +729,7 @@ export function TasksPage() {
                 onChange={(e) => setIsCommon(e.target.checked)}
               />
               <span>
-                本任务为组织通用任务，并会加入之后新建的项目
+                This is a common task and will be added to new projects
               </span>
             </label>
             <label className="flex cursor-pointer items-start gap-2.5">
@@ -739,7 +739,7 @@ export function TasksPage() {
                 checked={addToAll}
                 onChange={(e) => setAddToAll(e.target.checked)}
               />
-              <span>将本任务添加到所有当前已有的项目</span>
+              <span>Add this task to all existing projects</span>
             </label>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -748,29 +748,29 @@ export function TasksPage() {
               className="h-9"
               disabled={createMut.isPending || updateMut.isPending}
             >
-              保存
+              Save
             </Button>
             <Button
               type="button"
               variant="outline"
               onClick={resetForm}
             >
-              取消
+              Cancel
             </Button>
           </div>
         </form>
       ) : null}
 
       {isLoading && !data ? (
-        <p className="text-sm text-muted-foreground">加载中…</p>
+        <p className="text-sm text-muted-foreground">Loading…</p>
       ) : null}
       {isFetching && !isLoading ? (
-        <p className="text-xs text-muted-foreground">更新中…</p>
+        <p className="text-xs text-muted-foreground">Updating…</p>
       ) : null}
 
       {selectedInView.length > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/25 px-3 py-2 text-sm text-foreground">
-          <span>已选 {selectedInView.length} 项</span>
+          <span>{selectedInView.length} selected</span>
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -779,7 +779,7 @@ export function TasksPage() {
               onClick={() => {
                 if (
                   !window.confirm(
-                    `将归档所选的 ${selectedInView.length} 个任务，确定？`,
+                    `Archive the ${selectedInView.length} selected task(s)?`,
                   )
                 ) {
                   return
@@ -795,7 +795,7 @@ export function TasksPage() {
               }}
               disabled={bulkArchiving.isPending}
             >
-              批量归档
+              Archive selected
             </Button>
             <Button
               type="button"
@@ -803,7 +803,7 @@ export function TasksPage() {
               variant="ghost"
               onClick={() => setSelectedIds(new Set())}
             >
-              清除选择
+              Clear selection
             </Button>
           </div>
         </div>
@@ -812,7 +812,7 @@ export function TasksPage() {
       {!errorMessage && !isLoading && common.length === 0 && other.length === 0
         ? (
             <div className="rounded-md border border-dashed border-border bg-muted/20 px-6 py-10 text-center text-sm text-muted-foreground">
-              尚无任务。点击「新建任务」或调整筛选条件。
+              No tasks yet. Create one with &quot;New task&quot; or change the filter.
             </div>
           )
         : null}
@@ -821,7 +821,7 @@ export function TasksPage() {
         <TaskBlock
           id="common"
           title="Common tasks"
-          description="这些任务在新建项目时会自动加入项目。"
+          description="These tasks are added automatically when you create a new project."
           tasks={common}
           orgCurrency={orgCurrency}
           allSelected={common.length > 0 && common.every((t) => selectedIds.has(t.id))}
@@ -843,7 +843,7 @@ export function TasksPage() {
         <TaskBlock
           id="other"
           title="Other tasks"
-          description="这些任务需手动在项目中添加。"
+          description="These tasks must be added to projects manually."
           tasks={other}
           orgCurrency={orgCurrency}
           allSelected={other.length > 0 && other.every((t) => selectedIds.has(t.id))}

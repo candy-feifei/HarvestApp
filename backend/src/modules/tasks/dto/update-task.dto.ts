@@ -28,16 +28,22 @@ export class UpdateTaskDto {
   @IsBoolean()
   isBillable?: boolean
 
-  @ApiPropertyOptional({ nullable: true, description: '传 null 可清除默认时薪' })
+  @ApiPropertyOptional({ nullable: true, description: 'Set to null to clear the default rate' })
   @IsOptional()
   @ValidateIf((_, v) => v !== null && v !== undefined)
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'defaultHourlyRate 需为有效金额' })
-  @Min(0, { message: '时薪不能为负数' })
-  @Max(1_000_000, { message: '时薪超出上限' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'defaultHourlyRate must be a valid amount' },
+  )
+  @Min(0, { message: 'Hourly rate cannot be negative' })
+  @Max(1_000_000, { message: 'Hourly rate exceeds the maximum' })
   defaultHourlyRate?: number | null
 
-  @ApiPropertyOptional({ description: '为 true 时将本任务补录到所有尚未包含它的现有非归档项目' })
+  @ApiPropertyOptional({
+    description:
+      'When true, add this task to every non-archived project that does not already include it',
+  })
   @IsOptional()
   @IsBoolean()
   addToAllExistingProjects?: boolean
