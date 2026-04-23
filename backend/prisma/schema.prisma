@@ -208,13 +208,15 @@ model Project {
 }
 
 model Task {
-  id             String        @id @default(uuid())
-  name           String
-  isCommon       Boolean       @default(false)
-  isArchived     Boolean       @default(false)
-  organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  projectTasks   ProjectTask[]
+  id                 String        @id @default(uuid())
+  name               String
+  isCommon           Boolean       @default(false)
+  isArchived         Boolean       @default(false)
+  isBillable         Boolean  @default(true)
+  defaultHourlyRate  Decimal? @db.Decimal(10, 2)
+  organizationId     String
+  organization       Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectTasks       ProjectTask[]
 
   @@map("tasks")
 }
@@ -279,6 +281,9 @@ model Expense {
   receiptUrl String?
   status     EntryStatus @default(UNSUBMITTED)
   isLocked   Boolean     @default(false)
+  isBillable     Boolean     @default(true)
+  isReimbursable Boolean     @default(false)
+  unitQuantity   Decimal?    @db.Decimal(18, 4)
   userId     String
   projectId  String
   categoryId String
@@ -429,4 +434,21 @@ enum ApprovalStatus {
 enum InvoiceDueMode {
   UPON_RECEIPT
   NET_DAYS
+}
+
+/// Approval/report page time granularity
+enum ReportPeriod {
+  DAY
+  WEEK
+  SEMIMONTH
+  MONTH
+  QUARTER
+  CUSTOM
+}
+
+/// Approval page table grouping method
+enum ApprovalsGroupBy {
+  PERSON
+  PROJECT
+  CLIENT
 }

@@ -46,9 +46,9 @@ export const appNavSections: AppNavSection[] = [
       },
       {
         id: 'expenses',
-        title: '费用',
+        title: 'Expenses',
         to: '/expenses',
-        description: '费用与报销',
+        description: 'Expenses & reimbursement',
         icon: Wallet,
       },
     ],
@@ -80,9 +80,9 @@ export const appNavSections: AppNavSection[] = [
       },
       {
         id: 'tasks',
-        title: '任务',
+        title: 'Tasks',
         to: '/tasks',
-        description: '企业任务库与项目任务',
+        description: 'Organization task list and project tasks',
         icon: ListChecks,
       },
     ],
@@ -113,9 +113,9 @@ export const appNavSections: AppNavSection[] = [
     items: [
       {
         id: 'approvals',
-        title: '审批',
+        title: 'Approvals',
         to: '/approvals',
-        description: '工时报批与费用审批',
+        description: 'Work hour approval and expense approval',
         icon: CheckCircle2,
         pendingCount: 1,
       },

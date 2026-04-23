@@ -1,11 +1,21 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import * as express from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  const receiptsDir = join(process.cwd(), 'uploads', 'receipts');
+  if (!existsSync(receiptsDir)) {
+    mkdirSync(receiptsDir, { recursive: true });
+  }
+  app.use('/api/uploads/receipts', express.static(receiptsDir));
 
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new AllExceptionsFilter());

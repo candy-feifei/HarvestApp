@@ -33,7 +33,11 @@ export async function apiRequest<T = unknown>(
 ): Promise<T> {
   const url = joinUrl(getPublicApiBaseUrl(), path)
   const headers = new Headers(init.headers)
-  if (!headers.has('Content-Type') && init.body !== undefined) {
+  if (
+    !headers.has('Content-Type') &&
+    init.body !== undefined &&
+    !(init.body instanceof FormData)
+  ) {
     headers.set('Content-Type', 'application/json')
   }
 

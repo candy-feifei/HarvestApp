@@ -102,7 +102,9 @@ export class OrganizationContextService {
         select: { firstName: true, email: true },
       });
       if (!user) {
-        throw new ForbiddenException('用户不存在');
+        throw new ForbiddenException(
+          '无法同步工作区：当前令牌对应的用户已不存在于系统中，请重新登录后再试。',
+        );
       }
 
       const raw = user.firstName?.trim() || user.email.split('@')[0] || 'My';
