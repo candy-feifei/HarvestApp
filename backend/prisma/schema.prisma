@@ -191,6 +191,12 @@ model Project {
   budgetAmount  Decimal?      @db.Decimal(18, 2)
   notifyAt      Int?
   isArchived    Boolean       @default(false)
+  isPinned      Boolean       @default(false)
+  startsOn      DateTime?
+  endsOn        DateTime?
+  notes         String?       @db.Text
+  /// 扩展字段：可计费模式、团队/任务行、发票、列表展示用 spent/costs 等
+  metadata      Json?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
