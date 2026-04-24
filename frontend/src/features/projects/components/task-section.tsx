@@ -13,7 +13,7 @@ type TaskSectionProps = {
   /** Time & Materials + Task billable rate */
   showRateColumn: boolean
   currencySymbol?: string
-  /** Common ∪ Other 去重后的全集；下拉仅展示「尚未加入本项目」的任务（含从上方移除的） */
+  /** Deduplicated task catalog; dropdown lists tasks not yet on this project. */
   taskAddPool: TaskListItem[]
   catalogLoading?: boolean
 }
@@ -95,7 +95,7 @@ export function TaskSection({
     <div className="rounded-md border border-border bg-white">
       {catalogLoading ? (
         <p className="border-b border-border/60 px-3 py-1.5 text-xs text-muted-foreground">
-          正在加载组织任务…
+          Loading organization tasks…
         </p>
       ) : null}
       <div
@@ -146,7 +146,7 @@ export function TaskSection({
               type="button"
               onClick={() => removeTask(t.taskId)}
               className="inline-flex size-7 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted/40"
-              title="从本项目移除"
+              title="Remove from this project"
             >
               <X className="size-3.5" />
             </button>
@@ -215,7 +215,7 @@ export function TaskSection({
           placeholder="Add a task…"
           className="h-9 w-full min-w-0 rounded-md border border-border bg-white px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
           autoComplete="off"
-          aria-label="搜索并添加未加入本项目的任务"
+          aria-label="Search and add tasks not on this project"
           aria-expanded={open}
           aria-controls={suggestId}
         />
@@ -250,12 +250,12 @@ export function TaskSection({
         ) : null}
         {open && !catalogLoading && query.trim() !== '' && available.length === 0 ? (
           <p className="absolute z-[100] mt-0.5 w-full rounded-md border border-dashed border-border bg-muted/20 px-2 py-2 text-xs text-muted-foreground">
-            没有匹配的任务
+            No matching tasks
           </p>
         ) : null}
         {open && !catalogLoading && query.trim() === '' && taskAddPool.filter((o) => !inProjectIds.has(o.id)).length === 0 ? (
           <p className="absolute z-[100] mt-0.5 w-full rounded-md border border-border bg-white px-2 py-2 text-xs text-muted-foreground shadow-lg">
-            全部任务已加入本项目
+            All tasks are already on this project
           </p>
         ) : null}
       </div>

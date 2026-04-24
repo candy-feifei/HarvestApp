@@ -11,7 +11,7 @@ type TeamSectionProps = {
   members: ProjectFormTeamMember[]
   onChange: (next: ProjectFormTeamMember[]) => void
   showRateColumn: boolean
-  /** 组织全部成员；下方仅展示未加入本项目的成员（含从上方移除后） */
+  /** Full org roster; the list below shows members not yet on this project. */
   memberAddPool: TeamMemberRow[]
   currencySymbol?: string
   catalogLoading?: boolean
@@ -88,7 +88,7 @@ export function TeamSection({
     <div className="rounded-md border border-border bg-white">
       {catalogLoading ? (
         <p className="border-b border-border/60 px-3 py-1.5 text-xs text-muted-foreground">
-          正在加载团队成员…
+          Loading team members…
         </p>
       ) : null}
       <div
@@ -138,7 +138,7 @@ export function TeamSection({
               type="button"
               onClick={() => remove(m.userId)}
               className="inline-flex size-7 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted/40"
-              title="从本项目移除"
+              title="Remove from this project"
             >
               <X className="size-3.5" />
             </button>
@@ -218,7 +218,7 @@ export function TeamSection({
           placeholder="Assign a person…"
           className="h-9 w-full min-w-0 rounded-md border border-border bg-white px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
           autoComplete="off"
-          aria-label="搜索并添加未加入本项目的成员"
+          aria-label="Search and add members not on this project"
           aria-expanded={open}
           aria-controls={suggestId}
         />
@@ -254,7 +254,7 @@ export function TeamSection({
         ) : null}
         {open && !catalogLoading && query.trim() !== '' && available.length === 0 ? (
           <p className="absolute z-[100] mt-0.5 w-full rounded-md border border-dashed border-border bg-muted/20 px-2 py-2 text-xs text-muted-foreground">
-            没有匹配的成员
+            No matching people
           </p>
         ) : null}
         {open &&
@@ -263,7 +263,7 @@ export function TeamSection({
         memberAddPool.filter((m) => !inProjectIds.has(m.userId)).length ===
           0 ? (
           <p className="absolute z-[100] mt-0.5 w-full rounded-md border border-border bg-white px-2 py-2 text-xs text-muted-foreground shadow-lg">
-            全部成员已加入本项目
+            Everyone is already on this project
           </p>
         ) : null}
       </div>

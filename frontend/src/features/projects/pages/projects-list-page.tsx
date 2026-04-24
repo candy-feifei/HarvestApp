@@ -38,7 +38,7 @@ import {
 const qk = { projects: ['projects'] as const }
 
 const ACTION_MENU_MIN_W = 9 * 16
-/** 与 Harvest 多选行高亮接近的浅杏色 */
+/** Light apricot row highlight, similar to Harvest multi-select. */
 const selectedRowClass = 'bg-[#fff4e5] hover:bg-[#ffecdb]'
 const BULK_MENU_MIN_W = 12 * 16
 
@@ -145,7 +145,7 @@ function ProjectRowMenu({ p, onRefresh }: RowMenuProps) {
       await onRefresh()
     } catch (e) {
       if (e instanceof ApiError) setErr(e.message)
-      else setErr('操作失败')
+      else setErr('Action failed')
     } finally {
       setBusy(false)
     }
@@ -249,7 +249,7 @@ type BulkProjectsToolbarProps = {
 }
 
 /**
- * 有选中行时显示在筛选栏旁，与 Harvest 行为一致：批量归档、批量删除（Portal 避免被裁切）
+ * Shown beside filters when rows are selected (bulk archive / delete; portal avoids clipping).
  */
 function BulkProjectsToolbar({
   count,
@@ -314,7 +314,7 @@ function BulkProjectsToolbar({
       onClearSelection()
     } catch (e) {
       if (e instanceof ApiError) setErr(e.message)
-      else setErr('批量归档失败，请重试。')
+      else setErr('Bulk archive failed. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -555,14 +555,8 @@ export function ProjectsListPage() {
           Projects
         </h1>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            asChild
-            className="h-9 gap-2 text-white"
-            style={{ backgroundColor: '#187e42' }}
-          >
-            <Link to="/projects/new" className="hover:brightness-95">
-              + New project
-            </Link>
+          <Button asChild className="h-9 gap-2 self-start sm:self-auto">
+            <Link to="/projects/new">+ New project</Link>
           </Button>
         </div>
       </div>
@@ -629,7 +623,7 @@ export function ProjectsListPage() {
         <p className="text-sm text-destructive" role="alert">
           {listQuery.error instanceof ApiError
             ? listQuery.error.message
-            : '无法加载项目列表。'}
+            : 'Could not load the project list.'}
         </p>
       ) : null}
 
@@ -639,7 +633,7 @@ export function ProjectsListPage() {
 
       {!listQuery.isLoading && filtered.length === 0 && !listQuery.isError ? (
         <div className="rounded-md border border-dashed border-border bg-muted/20 px-6 py-10 text-center text-sm text-muted-foreground">
-          暂无项目。请创建或调整筛选条件。
+          No projects yet. Create one or change your filters.
         </div>
       ) : null}
 

@@ -183,7 +183,7 @@ export function ProjectFormPage() {
   const clientOptions = clientsQuery.data?.items ?? []
   const teamRows = teamQuery.data?.items ?? []
 
-  /** Common ∪ Other，用于「添加任务」下拉：未在本项目列表中的均可选（含删掉的 common） */
+  /** Union of common & other tasks for the add-task combobox (includes tasks not yet on this project). */
   const taskAddPool = useMemo((): TaskListItem[] => {
     const d = tasksCatalogQuery.data
     if (!d) return []
@@ -196,11 +196,11 @@ export function ProjectFormPage() {
   async function onSave() {
     setErr(null)
     if (!form.clientId) {
-      setErr('请选择客户。')
+      setErr('Please select a client.')
       return
     }
     if (!form.name.trim()) {
-      setErr('请填写项目名称。')
+      setErr('Please enter a project name.')
       return
     }
     try {
@@ -214,14 +214,14 @@ export function ProjectFormPage() {
         setErr(e.message)
         return
       }
-      setErr('保存失败，请重试。')
+      setErr('Could not save. Please try again.')
     }
   }
 
   if (isEdit && projectQuery.isLoading) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8">
-        <p className="text-sm text-muted-foreground">加载项目…</p>
+        <p className="text-sm text-muted-foreground">Loading project…</p>
       </div>
     )
   }
@@ -229,10 +229,10 @@ export function ProjectFormPage() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8">
         <p className="text-sm text-destructive" role="alert">
-          无法加载项目。
+          Could not load the project.
         </p>
         <Button asChild className="mt-4" variant="outline">
-          <Link to="/projects">返回列表</Link>
+          <Link to="/projects">Back to list</Link>
         </Button>
       </div>
     )
@@ -244,9 +244,6 @@ export function ProjectFormPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {isEdit ? 'Edit project' : 'New project'}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          配置项目类型、预算与可计费方式；与 Timesheet 及报表一致。
-        </p>
       </div>
 
       {err ? (
@@ -256,9 +253,6 @@ export function ProjectFormPage() {
       ) : null}
 
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          基本信息
-        </h2>
         <div className="space-y-4">
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
             <span className={labelCls}>Client</span>
@@ -374,8 +368,8 @@ export function ProjectFormPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          项目类型
+      <h2 className="mb-2 text-sm font-semibold text-foreground">
+        Project type
         </h2>
         <div className="flex flex-col gap-2 sm:flex-row">
           <button
@@ -575,7 +569,8 @@ export function ProjectFormPage() {
 
         {form.projectType === 'non_billable' && (
           <p className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-            此类型不向客户开账单；不填写可计费与费用字段。
+            This type is not billed to a client. Billable and fee fields do not
+            apply.
           </p>
         )}
       </section>
@@ -594,7 +589,7 @@ export function ProjectFormPage() {
       <section>
         <h2 className="mb-2 text-sm font-semibold text-foreground">Team</h2>
         {teamQuery.isError ? (
-          <p className="text-sm text-destructive">无法加载团队列表。</p>
+          <p className="text-sm text-destructive">Could not load the team list.</p>
         ) : (
           <TeamSection
             members={form.team}
@@ -715,7 +710,8 @@ export function ProjectFormPage() {
       <div className="flex flex-wrap gap-3 pt-2">
         <Button
           type="button"
-          className="min-w-36 bg-[#187e42] text-white hover:brightness-95"
+          size="lg"
+          className="min-w-36"
           onClick={onSave}
           disabled={busy}
         >
