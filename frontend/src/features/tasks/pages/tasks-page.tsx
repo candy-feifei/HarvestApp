@@ -89,7 +89,7 @@ function TaskRow({
 
   const rate = formatTaskRate(task.defaultHourlyRate, orgCurrency)
 
-  async function run(op: 'archive' | 'delete' | 'move') {
+  async function run(op: 'archive' | 'delete' | 'move' | 'addAll') {
     setErr(null)
     setBusy(true)
     try {
@@ -104,6 +104,15 @@ function TaskRow({
           return
         }
         await deleteTask(task.id)
+      } else if (op === 'addAll') {
+        const ok = window.confirm(
+          'Add this task to all existing projects in the organization?',
+        )
+        if (!ok) {
+          setBusy(false)
+          return
+        }
+        await updateTask(task.id, { addToAllExistingProjects: true })
       } else {
         const next = !task.isCommon
         await updateTask(task.id, { isCommon: next })
@@ -188,6 +197,14 @@ function TaskRow({
                 }}
               >
                 Edit
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
+                onClick={() => void run('addAll')}
+              >
+                Add to all projects
               </button>
               {section === 'common' ? (
                 <button
