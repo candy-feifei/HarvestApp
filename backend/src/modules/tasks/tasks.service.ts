@@ -128,11 +128,16 @@ export class TasksService {
 
   private async addTaskToAllActiveProjects(
     orgId: string,
-    task: { id: string; isBillable: boolean; defaultHourlyRate: Prisma.Decimal | null },
+    task: {
+      id: string
+      name: string
+      isBillable: boolean
+      defaultHourlyRate: Prisma.Decimal | null
+    },
   ) {
     const projects = await this.prisma.project.findMany({
       where: { organizationId: orgId, isArchived: false },
-      select: { id: true },
+      select: { id: true, metadata: true },
     })
     for (const p of projects) {
       const exists = await this.prisma.projectTask.findFirst({
@@ -141,14 +146,43 @@ export class TasksService {
       if (exists) {
         continue
       }
-      await this.prisma.projectTask.create({
-        data: {
-          projectId: p.id,
-          taskId: task.id,
-          isBillable: task.isBillable,
-          hourlyRate: task.defaultHourlyRate,
-        },
+      const nextTaskRow = {
+        taskId: task.id,
+        name: task.name,
+        isBillable: task.isBillable,
+        hourlyRate: task.defaultHourlyRate?.toNumber() ?? 0,
+      }
+      const meta = (p.metadata as Record<string, unknown> | null) ?? null
+      const existingTasksRaw =
+        meta && Array.isArray(meta.tasks) ? (meta.tasks as unknown[]) : []
+      const alreadyInMeta = existingTasksRaw.some((x) => {
+        if (!x || typeof x !== 'object') return false
+        return 'taskId' in x && (x as { taskId?: unknown }).taskId === task.id
       })
+      const nextMeta: Prisma.InputJsonValue =
+        meta == null
+          ? ({ tasks: [nextTaskRow] } as Prisma.InputJsonValue)
+          : ({
+              ...meta,
+              tasks: alreadyInMeta
+                ? existingTasksRaw
+                : [...existingTasksRaw, nextTaskRow],
+            } as Prisma.InputJsonValue)
+
+      await this.prisma.$transaction([
+        this.prisma.projectTask.create({
+          data: {
+            projectId: p.id,
+            taskId: task.id,
+            isBillable: task.isBillable,
+            hourlyRate: task.defaultHourlyRate,
+          },
+        }),
+        this.prisma.project.update({
+          where: { id: p.id },
+          data: { metadata: nextMeta },
+        }),
+      ])
     }
   }
 

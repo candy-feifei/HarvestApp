@@ -191,6 +191,20 @@ model Project {
   budgetAmount  Decimal?      @db.Decimal(18, 2)
   notifyAt      Int?
   isArchived    Boolean       @default(false)
+  isPinned      Boolean       @default(false)
+  startsOn      DateTime?
+  endsOn        DateTime?
+  notes         String?       @db.Text
+  /// 项目发票：与客户 Client 的 invoice 字段同语义
+  invoiceDueMode  InvoiceDueMode @default(UPON_RECEIPT)
+  invoiceNetDays  Int?
+  invoicePoNumber String?        @db.VarChar(500)
+  invoiceTaxPercent       Decimal? @db.Decimal(5, 2)
+  invoiceSecondTaxEnabled Boolean  @default(false)
+  invoiceSecondTaxPercent Decimal? @db.Decimal(5, 2)
+  invoiceDiscountPercent  Decimal? @db.Decimal(5, 2)
+  /// 扩展：可计费模式、列表 spent/costs 等（发票在表列，不在此 JSON）
+  metadata      Json?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -255,6 +269,7 @@ model ProjectAssignment {
 
 model TimeEntry {
   id            String      @id @default(uuid())
+  /// 工作日，统一存 UTC 当天 00:00:00，与 (userId, projectTaskId) 唯一
   spentDate     DateTime
   hours         Decimal     @db.Decimal(10, 2)
   notes         String?     @db.Text
@@ -264,12 +279,15 @@ model TimeEntry {
   projectId     String
   projectTaskId String
   approvalId    String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectTask ProjectTask @relation(fields: [projectTaskId], references: [id], onDelete: Restrict)
   approval    Approval?   @relation(fields: [approvalId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, projectTaskId, spentDate])
   @@map("time_entries")
 }
 

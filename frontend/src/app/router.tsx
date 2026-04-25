@@ -88,6 +88,12 @@ const ProjectsPage = lazy(() =>
   })),
 )
 
+const ProjectFormPage = lazy(() =>
+  import('@/features/projects/pages/project-form-page').then((m) => ({
+    default: m.ProjectFormPage,
+  })),
+)
+
 const TasksPage = lazy(() =>
   import('@/features/tasks/pages/tasks-page').then((m) => ({
     default: m.TasksPage,
@@ -164,16 +170,18 @@ function pathFromNavTo(to: string) {
 
 const allModuleItems = [...appNavItemsFlat, ...appFooterNavItems]
 
-const moduleRoutes = allModuleItems.map((item) => {
-  const Component = lazyModuleRoot[item.id as keyof typeof lazyModuleRoot]
-  if (!Component) {
-    throw new Error(`No lazy page for nav id: ${item.id}`)
-  }
-  return {
-    path: pathFromNavTo(item.to),
-    element: <Component />,
-  }
-})
+const moduleRoutes = allModuleItems
+  .filter((item) => item.id !== 'projects')
+  .map((item) => {
+    const Component = lazyModuleRoot[item.id as keyof typeof lazyModuleRoot]
+    if (!Component) {
+      throw new Error(`No lazy page for nav id: ${item.id}`)
+    }
+    return {
+      path: pathFromNavTo(item.to),
+      element: <Component />,
+    }
+  })
 
 export const appRouter = createBrowserRouter([
   {
@@ -255,6 +263,30 @@ export const appRouter = createBrowserRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             <TeamInvitePage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'projects/new',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <ProjectFormPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'projects/:projectId/edit',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <ProjectFormPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'projects',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <ProjectsPage />
           </Suspense>
         ),
       },
