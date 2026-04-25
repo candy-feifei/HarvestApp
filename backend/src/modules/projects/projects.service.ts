@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { InvoiceDueMode, Prisma } from '@prisma/client'
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator'
 import { PrismaService } from '../../prisma/prisma.service'
 import {
@@ -52,13 +52,27 @@ type ProjectDetail = Prisma.ProjectGetPayload<{
   include: typeof projectDetailInclude
 }>
 
+function projectInvoiceDueModeToUi(
+  mode: InvoiceDueMode,
+  netDays: number | null,
+) {
+  if (mode === 'UPON_RECEIPT') {
+    return 'upon_receipt' as const
+  }
+  const d = netDays ?? 30
+  if (d <= 15) return 'net_15' as const
+  if (d <= 30) return 'net_30' as const
+  if (d <= 45) return 'net_45' as const
+  return 'net_60' as const
+}
+
 function sanitizeMetadataInput(
   m: Record<string, unknown> | null | undefined,
 ): Prisma.InputJsonValue | typeof Prisma.JsonNull {
   if (m == null) {
     return Prisma.JsonNull
   }
-  const { tasks: _a, team: _b, ...rest } = m
+  const { tasks: _a, team: _b, invoice: _c, ...rest } = m
   if (Object.keys(rest).length === 0) {
     return Prisma.JsonNull
   }
@@ -70,7 +84,7 @@ function metadataForApi(raw: Prisma.JsonValue | null) {
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     return raw
   }
-  const { tasks: _t, team: _g, ...rest } = raw as Record<string, unknown>
+  const { tasks: _t, team: _g, invoice: _i, ...rest } = raw as Record<string, unknown>
   if (Object.keys(rest).length === 0) {
     return null
   }
@@ -91,16 +105,12 @@ export class ProjectsService {
       projectTasks?: ProjectDetail['projectTasks']
       assignments?: ProjectDetail['assignments']
     },
+    overrides?: {
+      spentAmount?: number
+      costsAmount?: number
+    },
   ) {
     const rawMeta = (p.metadata as Record<string, unknown> | null) ?? null
-    const spentRaw =
-      rawMeta && typeof rawMeta.spentAmount === 'number'
-        ? rawMeta.spentAmount
-        : 0
-    const costsRaw =
-      rawMeta && typeof rawMeta.costsAmount === 'number'
-        ? rawMeta.costsAmount
-        : 0
 
     const fromRelTasks =
       p.projectTasks?.map((pt) => ({
@@ -141,10 +151,18 @@ export class ProjectsService {
       clientId: p.client.id,
       clientName: p.client.name,
       organizationId: p.organizationId,
-      spentAmount: spentRaw,
-      costsAmount: costsRaw,
+      spentAmount: overrides?.spentAmount ?? 0,
+      costsAmount: overrides?.costsAmount ?? 0,
       tasks,
       team,
+      invoice: {
+        dueMode: projectInvoiceDueModeToUi(p.invoiceDueMode, p.invoiceNetDays),
+        poNumber: p.invoicePoNumber ?? '',
+        taxPercent: toNum(p.invoiceTaxPercent) ?? 0,
+        secondTaxEnabled: p.invoiceSecondTaxEnabled,
+        secondTaxPercent: toNum(p.invoiceSecondTaxPercent) ?? 0,
+        discountPercent: toNum(p.invoiceDiscountPercent) ?? 0,
+      },
     }
   }
 
@@ -266,8 +284,62 @@ export class ProjectsService {
       }),
       this.prisma.project.count({ where: { organizationId: orgId } }),
     ])
+
+    const projectIds = data.map((p) => p.id)
+    const spentAndCostsByProjectId =
+      projectIds.length === 0
+        ? new Map<string, { spent: number; costs: number }>()
+        : new Map<string, { spent: number; costs: number }>(
+            (
+              await this.prisma.$queryRaw<
+                Array<{
+                  projectId: string
+                  spent: Prisma.Decimal | null
+                  costs: Prisma.Decimal | null
+                }>
+              >(Prisma.sql`
+                SELECT
+                  te."projectId" as "projectId",
+                  COALESCE(SUM(te."hours"), 0) as "spent",
+                  COALESCE(SUM(
+                    te."hours" * COALESCE(
+                      pa."projectCostRate",
+                      rh."costRate",
+                      0
+                    )
+                  ), 0) as "costs"
+                FROM "time_entries" te
+                JOIN "projects" p ON p."id" = te."projectId"
+                LEFT JOIN "project_assignments" pa
+                  ON pa."projectId" = te."projectId"
+                  AND pa."userId" = te."userId"
+                LEFT JOIN "user_organizations" uo
+                  ON uo."userId" = te."userId"
+                  AND uo."organizationId" = p."organizationId"
+                LEFT JOIN LATERAL (
+                  SELECT r."costRate"
+                  FROM "rate_histories" r
+                  WHERE r."userOrganizationId" = uo."id"
+                    AND r."startDate" <= te."spentDate"
+                  ORDER BY r."startDate" DESC
+                  LIMIT 1
+                ) rh ON true
+                WHERE te."projectId" IN (${Prisma.join(projectIds)})
+                GROUP BY te."projectId"
+              `)
+            ).map((r) => [
+              r.projectId,
+              { spent: toNum(r.spent) ?? 0, costs: toNum(r.costs) ?? 0 },
+            ]),
+          )
+
     return toPaginatedResult(
-      data.map((row) => this.toApiProject(row)),
+      data.map((row) =>
+        this.toApiProject(row, {
+          spentAmount: spentAndCostsByProjectId.get(row.id)?.spent ?? 0,
+          costsAmount: spentAndCostsByProjectId.get(row.id)?.costs ?? 0,
+        }),
+      ),
       page,
       pageSize,
       total,
@@ -290,7 +362,41 @@ export class ProjectsService {
     if (!p) {
       throw new NotFoundException('项目不存在或无权访问')
     }
-    return this.toApiProject(p)
+    const agg = await this.prisma.$queryRaw<
+      Array<{ spent: Prisma.Decimal | null; costs: Prisma.Decimal | null }>
+    >(Prisma.sql`
+      SELECT
+        COALESCE(SUM(te."hours"), 0) as "spent",
+        COALESCE(SUM(
+          te."hours" * COALESCE(
+            pa."projectCostRate",
+            rh."costRate",
+            0
+          )
+        ), 0) as "costs"
+      FROM "time_entries" te
+      JOIN "projects" p ON p."id" = te."projectId"
+      LEFT JOIN "project_assignments" pa
+        ON pa."projectId" = te."projectId"
+        AND pa."userId" = te."userId"
+      LEFT JOIN "user_organizations" uo
+        ON uo."userId" = te."userId"
+        AND uo."organizationId" = p."organizationId"
+      LEFT JOIN LATERAL (
+        SELECT r."costRate"
+        FROM "rate_histories" r
+        WHERE r."userOrganizationId" = uo."id"
+          AND r."startDate" <= te."spentDate"
+        ORDER BY r."startDate" DESC
+        LIMIT 1
+      ) rh ON true
+      WHERE te."projectId" = ${id}
+    `)
+    const row = agg[0]
+    return this.toApiProject(p, {
+      spentAmount: toNum(row?.spent ?? null) ?? 0,
+      costsAmount: toNum(row?.costs ?? null) ?? 0,
+    })
   }
 
   async create(
@@ -343,6 +449,19 @@ export class ProjectsService {
       startsOn: dto.startsOn ? new Date(dto.startsOn) : null,
       endsOn: dto.endsOn ? new Date(dto.endsOn) : null,
       notes: dto.notes,
+      invoiceDueMode: dto.invoiceDueMode ?? 'UPON_RECEIPT',
+      invoiceNetDays:
+        (dto.invoiceDueMode ?? 'UPON_RECEIPT') === 'NET_DAYS'
+          ? (dto.invoiceNetDays ?? 30)
+          : null,
+      invoicePoNumber: dto.invoicePoNumber,
+      invoiceTaxPercent: toDecimal(dto.invoiceTaxPercent) ?? null,
+      invoiceSecondTaxEnabled: dto.invoiceSecondTaxEnabled ?? false,
+      invoiceSecondTaxPercent:
+        (dto.invoiceSecondTaxEnabled ?? false)
+          ? toDecimal(dto.invoiceSecondTaxPercent) ?? null
+          : null,
+      invoiceDiscountPercent: toDecimal(dto.invoiceDiscountPercent) ?? null,
       metadata: sanitizeMetadataInput(
         dto.metadata as Record<string, unknown> | undefined,
       ) as Prisma.InputJsonValue,
@@ -424,6 +543,34 @@ export class ProjectsService {
     }
     if (dto.endsOn !== undefined) u.endsOn = dto.endsOn ? new Date(dto.endsOn) : null
     if (dto.notes !== undefined) u.notes = dto.notes
+    if (dto.invoiceDueMode !== undefined) {
+      u.invoiceDueMode = dto.invoiceDueMode
+      u.invoiceNetDays =
+        dto.invoiceDueMode === 'NET_DAYS'
+          ? (dto.invoiceNetDays ?? existing.invoiceNetDays ?? 30)
+          : null
+    } else if (dto.invoiceNetDays !== undefined) {
+      u.invoiceNetDays =
+        existing.invoiceDueMode === 'NET_DAYS' ? dto.invoiceNetDays : null
+    }
+    if (dto.invoicePoNumber !== undefined) u.invoicePoNumber = dto.invoicePoNumber
+    if (dto.invoiceTaxPercent !== undefined) {
+      u.invoiceTaxPercent = toDecimal(dto.invoiceTaxPercent) ?? null
+    }
+    if (dto.invoiceSecondTaxEnabled !== undefined) {
+      u.invoiceSecondTaxEnabled = dto.invoiceSecondTaxEnabled
+      if (!dto.invoiceSecondTaxEnabled) u.invoiceSecondTaxPercent = null
+    }
+    if (dto.invoiceSecondTaxPercent !== undefined) {
+      const enabled =
+        dto.invoiceSecondTaxEnabled ?? existing.invoiceSecondTaxEnabled
+      u.invoiceSecondTaxPercent = enabled
+        ? toDecimal(dto.invoiceSecondTaxPercent) ?? null
+        : null
+    }
+    if (dto.invoiceDiscountPercent !== undefined) {
+      u.invoiceDiscountPercent = toDecimal(dto.invoiceDiscountPercent) ?? null
+    }
     if (dto.metadata !== undefined) {
       u.metadata = sanitizeMetadataInput(
         dto.metadata as Record<string, unknown> | null,

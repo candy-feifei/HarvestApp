@@ -29,7 +29,6 @@ import {
   projectListSpentValue,
   projectRemaining,
   projectRemainingPercentOfBudget,
-  projectSpentPercent,
   projectTypeLabelFromApi,
   projectFormValuesFromRecord,
   type ProjectRecord,
@@ -409,17 +408,10 @@ function BulkProjectsToolbar({
 }
 
 function ProgressCell({ p }: { p: ProjectRecord }) {
-  const pct = projectSpentPercent(p)
   return (
-    <div className="min-w-0 pr-1">
+    <div className="min-w-0">
       <div className="text-right text-sm font-medium tabular-nums text-foreground">
         {projectListSpentValue(p).toFixed(2)}
-      </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-sm bg-muted/60">
-        <div
-          className="h-full bg-primary/90 transition-all"
-          style={{ width: `${Math.min(100, pct)}%` }}
-        />
       </div>
     </div>
   )
@@ -659,7 +651,7 @@ export function ProjectsListPage() {
                 </th>
                 <th className="p-2">Client / Project</th>
                 <th className="p-2 text-right">Budget</th>
-                <th className="min-w-[7rem] p-2">Spent</th>
+                <th className="min-w-[7rem] p-2 text-right">Spent</th>
                 <th className="p-2 text-right">Remaining</th>
                 <th className="p-2 text-right">Costs</th>
                 <th className="p-2 text-right">Actions</th>
@@ -676,6 +668,7 @@ export function ProjectsListPage() {
                   {rows.map((p) => {
                     const rem = projectRemaining(p)
                     const rPct = projectRemainingPercentOfBudget(p)
+                    const budget = projectListBudgetValue(p)
                     const label = projectTypeLabelFromApi(p.billingMethod)
                     return (
                       <tr
@@ -709,14 +702,14 @@ export function ProjectsListPage() {
                           </div>
                         </td>
                         <td className="p-2 text-right text-sm tabular-nums text-foreground">
-                          {projectListBudgetValue(p).toFixed(2)}
+                          {budget == null ? '' : budget.toFixed(2)}
                         </td>
                         <td className="p-2">
                           <ProgressCell p={p} />
                         </td>
                         <td className="p-2 text-right text-sm tabular-nums text-foreground">
-                          {rem.toFixed(2)}
-                          {rPct != null ? ` (${rPct.toFixed(0)}%)` : ''}
+                          {rem == null ? '' : rem.toFixed(2)}
+                          {rem != null && rPct != null ? ` (${rPct.toFixed(0)}%)` : ''}
                         </td>
                         <td className="p-2 text-right text-sm tabular-nums text-foreground">
                           {formatMoney(p.costsAmount ?? 0, currency)}

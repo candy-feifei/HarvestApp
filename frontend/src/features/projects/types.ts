@@ -49,7 +49,7 @@ export type ProjectFormTeamMember = {
 }
 
 /**
- * 存入 metadata 的对象（与后端 `projects.metadata` JSON 对齐）
+ * 存入 metadata 的对象（与后端 `projects.metadata` JSON 对齐；不含 tasks/team/invoice）
  */
 export type ProjectMetadata = {
   billableRateMode?: BillableRateModeUi
@@ -63,14 +63,15 @@ export type ProjectMetadata = {
   tasks?: ProjectFormTask[]
   /** @deprecated Legacy only; use API `team` on ProjectRecord */
   team?: ProjectFormTeamMember[]
-  invoice?: {
-    dueMode: InvoiceDueModeUi
-    poNumber: string
-    taxPercent: number
-    secondTaxEnabled: boolean
-    secondTaxPercent: number
-    discountPercent: number
-  }
+}
+
+export type ProjectInvoiceForm = {
+  dueMode: InvoiceDueModeUi
+  poNumber: string
+  taxPercent: number
+  secondTaxEnabled: boolean
+  secondTaxPercent: number
+  discountPercent: number
 }
 
 /** API 单条项目（getProject / 列表行） */
@@ -100,6 +101,8 @@ export type ProjectRecord = {
   tasks?: ProjectApiTaskRow[]
   /** From `project_assignments`。 */
   team?: ProjectApiTeamRow[]
+  /** 来自 `projects` 表上发票列（新 API 始终返回） */
+  invoice?: ProjectInvoiceForm
 }
 
 export type ProjectApiTaskRow = {
@@ -127,7 +130,8 @@ export type ProjectsPaginatedResponse = {
 }
 
 /** 列表行计算字段 */
-export function projectListBudgetValue(p: ProjectRecord): number {
+export function projectListBudgetValue(p: ProjectRecord): number | null {
+  if (p.budgetType === 'NO_BUDGET') return null
   return p.budgetAmount ?? 0
 }
 
@@ -136,8 +140,10 @@ export function projectListSpentValue(p: ProjectRecord): number {
 }
 
 /** Remaining = Budget − Spent */
-export function projectRemaining(p: ProjectRecord): number {
-  return projectListBudgetValue(p) - projectListSpentValue(p)
+export function projectRemaining(p: ProjectRecord): number | null {
+  const b = projectListBudgetValue(p)
+  if (b == null) return null
+  return b - projectListSpentValue(p)
 }
 
 /**
@@ -145,14 +151,15 @@ export function projectRemaining(p: ProjectRecord): number {
  */
 export function projectRemainingPercentOfBudget(p: ProjectRecord): number | null {
   const b = projectListBudgetValue(p)
-  if (b <= 0) return null
-  return (projectRemaining(p) / b) * 100
+  const r = projectRemaining(p)
+  if (b == null || b <= 0 || r == null) return null
+  return (r / b) * 100
 }
 
 /** 进度条：已花费 / 预算 */
 export function projectSpentPercent(p: ProjectRecord): number {
   const b = projectListBudgetValue(p)
-  if (b <= 0) return 0
+  if (b == null || b <= 0) return 0
   return Math.min(100, (projectListSpentValue(p) / b) * 100)
 }
 
@@ -239,7 +246,7 @@ export type ProjectFormValues = {
   primaryManagerUserId: string | null
   tasks: ProjectFormTask[]
   team: ProjectFormTeamMember[]
-  invoice: NonNullable<ProjectMetadata['invoice']>
+  invoice: ProjectInvoiceForm
 }
 
 type TaskRowSaved = ProjectFormTask & { id?: string }
@@ -390,12 +397,12 @@ export function projectFormValuesFromRecord(p: ProjectRecord): ProjectFormValues
           ? fromMetaTeam
           : [],
     invoice: {
-      dueMode: meta.invoice?.dueMode ?? 'upon_receipt',
-      poNumber: meta.invoice?.poNumber ?? '',
-      taxPercent: meta.invoice?.taxPercent ?? 0,
-      secondTaxEnabled: meta.invoice?.secondTaxEnabled ?? false,
-      secondTaxPercent: meta.invoice?.secondTaxPercent ?? 0,
-      discountPercent: meta.invoice?.discountPercent ?? 0,
+      dueMode: p.invoice?.dueMode ?? 'upon_receipt',
+      poNumber: p.invoice?.poNumber ?? '',
+      taxPercent: p.invoice?.taxPercent ?? 0,
+      secondTaxEnabled: p.invoice?.secondTaxEnabled ?? false,
+      secondTaxPercent: p.invoice?.secondTaxPercent ?? 0,
+      discountPercent: p.invoice?.discountPercent ?? 0,
     },
   }
 }

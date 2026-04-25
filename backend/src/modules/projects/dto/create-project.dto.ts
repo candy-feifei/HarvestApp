@@ -1,17 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BillingMethod, BudgetType } from '@prisma/client';
+import { BillingMethod, BudgetType, InvoiceDueMode } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsInt,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { ProjectAssignmentLineDto } from './project-assignment-line.dto';
@@ -100,9 +103,57 @@ export class CreateProjectDto {
   @MaxLength(20000)
   notes?: string;
 
+  @ApiPropertyOptional({ enum: InvoiceDueMode, default: InvoiceDueMode.UPON_RECEIPT })
+  @IsOptional()
+  @IsEnum(InvoiceDueMode)
+  invoiceDueMode?: InvoiceDueMode;
+
+  @ApiPropertyOptional({ description: '当 invoiceDueMode 为 NET_DAYS 时建议提供' })
+  @ValidateIf((o: CreateProjectDto) => o.invoiceDueMode === 'NET_DAYS')
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(180)
+  invoiceNetDays?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  invoicePoNumber?: string;
+
+  @ApiPropertyOptional({ description: '主税率 0–100' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  invoiceTaxPercent?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  invoiceSecondTaxEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: '第二税率 0–100' })
+  @ValidateIf((o: CreateProjectDto) => Boolean(o.invoiceSecondTaxEnabled))
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  invoiceSecondTaxPercent?: number;
+
+  @ApiPropertyOptional({ description: '折扣 0–100' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  invoiceDiscountPercent?: number;
+
   @ApiPropertyOptional({
     description:
-      'JSON: billableRateMode, invoice, spentAmount, etc. (tasks/team use `tasks` / `assignments` fields)',
+      'JSON: billableRateMode, spentAmount, etc. (tasks/team 用 `tasks` / `assignments`；发票用表字段)',
   })
   @IsOptional()
   @IsObject()

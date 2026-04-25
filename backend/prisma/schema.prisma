@@ -195,7 +195,15 @@ model Project {
   startsOn      DateTime?
   endsOn        DateTime?
   notes         String?       @db.Text
-  /// 扩展字段：可计费模式、团队/任务行、发票、列表展示用 spent/costs 等
+  /// 项目发票：与客户 Client 的 invoice 字段同语义
+  invoiceDueMode  InvoiceDueMode @default(UPON_RECEIPT)
+  invoiceNetDays  Int?
+  invoicePoNumber String?        @db.VarChar(500)
+  invoiceTaxPercent       Decimal? @db.Decimal(5, 2)
+  invoiceSecondTaxEnabled Boolean  @default(false)
+  invoiceSecondTaxPercent Decimal? @db.Decimal(5, 2)
+  invoiceDiscountPercent  Decimal? @db.Decimal(5, 2)
+  /// 扩展：可计费模式、列表 spent/costs 等（发票在表列，不在此 JSON）
   metadata      Json?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt

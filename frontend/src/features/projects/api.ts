@@ -5,6 +5,7 @@ import type {
   ProjectMetadata,
   ApiBillingMethod,
   ProjectsPaginatedResponse,
+  InvoiceDueModeUi,
 } from './types'
 
 /** 与根路径拼接后为 `GET/POST /api/projects` */
@@ -26,8 +27,8 @@ function buildMetadataFromForm(
   form: ProjectFormValues,
   existing: ProjectMetadata | null,
 ): ProjectMetadata {
-  const e = existing ?? {}
-  const { tasks: _dropT, team: _dropG, ...kept } = e
+  const e = (existing ?? {}) as ProjectMetadata & Record<string, unknown>
+  const { tasks: _dropT, team: _dropG, invoice: _dropI, ...kept } = e
   return {
     ...kept,
     billableRateMode: form.billableRateMode,
@@ -35,7 +36,32 @@ function buildMetadataFromForm(
     spentAmount: form.spentAmount,
     costsAmount: form.costsAmount,
     primaryManagerUserId: form.primaryManagerUserId,
-    invoice: form.invoice,
+  }
+}
+
+const DUE_MODE_TO_NET_DAYS: Record<Exclude<InvoiceDueModeUi, 'upon_receipt'>, number> = {
+  net_15: 15,
+  net_30: 30,
+  net_45: 45,
+  net_60: 60,
+}
+
+function formInvoiceToApiBody(form: ProjectFormValues) {
+  const i = form.invoice
+  const dueBase =
+    i.dueMode === 'upon_receipt'
+      ? { invoiceDueMode: 'UPON_RECEIPT' as const, invoiceNetDays: null }
+      : {
+          invoiceDueMode: 'NET_DAYS' as const,
+          invoiceNetDays: DUE_MODE_TO_NET_DAYS[i.dueMode as Exclude<InvoiceDueModeUi, 'upon_receipt'>],
+        }
+  return {
+    ...dueBase,
+    invoicePoNumber: i.poNumber.trim() || undefined,
+    invoiceTaxPercent: i.taxPercent,
+    invoiceSecondTaxEnabled: i.secondTaxEnabled,
+    invoiceSecondTaxPercent: i.secondTaxEnabled ? i.secondTaxPercent : undefined,
+    invoiceDiscountPercent: i.discountPercent,
   }
 }
 
@@ -109,6 +135,7 @@ export function formValuesToCreatePayload(form: ProjectFormValues) {
     metadata: metadata as unknown as Record<string, unknown>,
     tasks: formTasksToApiBody(form),
     assignments: formTeamToAssignmentsBody(form),
+    ...formInvoiceToApiBody(form),
   }
 }
 
@@ -145,6 +172,7 @@ export function formValuesToUpdatePayload(
     metadata: metadata as unknown as Record<string, unknown>,
     tasks: formTasksToApiBody(form),
     assignments: formTeamToAssignmentsBody(form),
+    ...formInvoiceToApiBody(form),
   }
 }
 
