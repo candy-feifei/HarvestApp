@@ -1,5 +1,5 @@
 # Tasks module implementation
-_Exported on 2026/4/23 at GMT+8 13:40:25 from Cursor (3.1.14)_
+_Exported on 2026/4/25 at GMT+8 12:42:21 from Cursor (3.1.14)_
 
 ---
 
@@ -99,4 +99,95 @@ Common tasks在新建project时，会自动将这些tasks添加到project中。O
 3. **按钮顺序**：右侧工具区改为先 **「新建任务」**，再 **「Export」**（大屏时左/右顺序对应「新建」在左、「导出」在右）。
 
 若你在某条紧贴视口底边的行上仍感觉菜单被裁切，多半是外层 `main` 的 `overflow-auto` 在滚动区域边界上的表现；那时可以再改成用 **Portal + fixed** 挂到 `document.body`。当前场景按上述修改一般即可。
+
+---
+
+**User**
+
+请将上面生成的Tasks相关代码中的中文全部替换成英文
+
+---
+
+**Cursor**
+
+正在将 Tasks 模块中所有中文替换为英文，先搜索相关文件中的中文内容。
+
+
+
+正在将 backend 与 frontend 的 Tasks 相关文件中的中文全部改为英文。
+
+
+
+正在批量替换：先更新后端文件，再更新 `tasks-page.tsx`。
+
+
+
+已将 `features/tasks` 与 `modules/tasks` 内中文全部替换。侧栏中 Tasks 的导航仍为中文，正在将该项改为英文以保持一致。
+
+
+
+### 已改为英文的范围
+
+1. **Backend** `backend/src/modules/tasks/`  
+   - `create-task.dto.ts` / `update-task.dto.ts`：`@ApiProperty` 说明、校验错误信息  
+   - `tasks.controller.ts`：`@ApiOperation` / `@ApiQuery` 文案  
+   - `tasks.service.ts`：`NotFoundException` / `BadRequestException` 提示、JSDoc 注释  
+
+2. **Frontend** `frontend/src/features/tasks/`  
+   - `pages/tasks-page.tsx`：页面标题、按钮、表单、空状态、确认框、行内错误、Actions 菜单、区块说明、批量操作等全部用户可见文案  
+
+3. **侧栏**（与 Tasks 入口一致，避免仍显示「任务」）  
+   - `frontend/src/lib/nav-config.ts` 中 `id: 'tasks'` 的 `title` / `description` 已改为英文。
+
+`frontend/src/features/tasks/api.ts` 中本身没有中文，未改。
+
+若你还希望 **整站** 导航或其它模块也统一英文，可以说明范围再改。
+
+---
+
+**User**
+
+@HarvestApp/frontend/src/features/tasks/pages/tasks-page.tsx:192-210 在 Move to Other tasks 或者 Move to Common tasks 的前面再加一个 'Add to all projects' 并实对应的现后台功能，实现将该task关联到所有project上的功能，
+
+---
+
+**Cursor**
+
+我会在每行 `Actions` 下拉里新增 **“Add to all projects”** 菜单项，点击后调用后端现有的 `PATCH /tasks/:id`（`addToAllExistingProjects: true`）来把该 task 关联到所有未归档项目上，并保持当前列表刷新与错误提示一致。接下来直接修改 `tasks-page.tsx`。
+
+已在 `Actions` 下拉菜单里加上 **“Add to all projects”**，并接到后端现有功能：点击后会调用 `updateTask(task.id, { addToAllExistingProjects: true })`，把该 task 关联到组织内**所有未归档项目**（已存在的关联会跳过），然后自动刷新列表。
+
+改动在 `frontend/src/features/tasks/pages/tasks-page.tsx` 的 `TaskRow` 内：
+- 新增菜单项：**Add to all projects**
+- `run()` 增加 `addAll` 分支并带确认框
+
+另外我跑了前端 build，报错来自 `projects-list-page.tsx` 的未使用变量（与本次 tasks 改动无关）。如果你希望我顺手把这两个 TS6133 也修掉，我可以继续处理。
+
+---
+
+**User**
+
+上面修改我测试数据正常保存到了 project_tasks 表，但是在 @task-section.tsx 中没有显示已添加的task，看看是什么问题
+
+---
+
+**Cursor**
+
+我先查看 `task-section.tsx` 里任务列表的数据来源与筛选逻辑（尤其是是否只显示“已手动添加”的某类记录、是否按 `projectId`/`taskId` 关联字段取值、以及缓存 key 是否需要刷新），再对齐后端返回结构来修复显示问题。
+
+问题原因找到了：`task-section.tsx` 显示的是 **project 的 `metadata.tasks`**（项目表里的 JSON），而你点 “Add to all projects” 只写入了 **`project_tasks` 表**，没有同步更新每个项目的 `metadata.tasks`，所以 UI 仍然看不到。  
+我接下来会在后端把「批量关联到所有项目」时同时把对应 task 追加到各项目的 `metadata.tasks`，这样项目编辑页会立刻显示。
+
+问题原因是 **`task-section.tsx` 显示的数据来源不是 `project_tasks` 表**，而是项目表里的 **`projects.metadata.tasks`（JSON）**。  
+你点 “Add to all projects” 之前只写了 `project_tasks`，所以项目编辑页仍然读不到新增任务。
+
+### 已修复
+我已在后端把「Add to all projects」的逻辑改成 **同时**：
+- 插入 `project_tasks`
+- 并把该任务追加到每个项目的 `metadata.tasks`（若已存在则不重复）
+
+改动文件：`backend/src/modules/tasks/tasks.service.ts`  
+现在你再执行一次 “Add to all projects”，回到项目编辑页，`task-section.tsx` 就会显示新增的 task 了。
+
+如果你希望对**历史已写入 `project_tasks` 但未写入 `metadata`** 的数据做一次性补齐，我也可以加一个后台脚本/接口来批量同步。
 
