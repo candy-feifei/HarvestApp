@@ -115,14 +115,22 @@ export function ProjectFormPage() {
     const base = projectFormValuesFromRecord(projectQuery.data)
     const next: ProjectFormValues = { ...base }
     if (teamQuery.data?.items) {
+      const teamSaved =
+        projectQuery.data.team?.length
+          ? projectQuery.data.team
+          : projectQuery.data.metadata?.team
       next.team = projectTeamForEditFromSaved(
-        projectQuery.data.metadata?.team,
+        teamSaved,
         teamQuery.data.items,
       )
     }
     if (tasksCatalogQuery.data) {
+      const taskSaved =
+        projectQuery.data.tasks?.length
+          ? projectQuery.data.tasks
+          : projectQuery.data.metadata?.tasks
       next.tasks = projectTasksForEditFromSaved(
-        projectQuery.data.metadata?.tasks,
+        taskSaved,
         tasksCatalogQuery.data.common,
         tasksCatalogQuery.data.other,
       )
@@ -474,40 +482,6 @@ export function ProjectFormPage() {
                 )}
               </div>
             </div>
-            <div className="grid gap-1.5 sm:grid-cols-[auto_1fr] sm:items-center">
-              <span className="text-sm font-medium text-foreground">Budget</span>
-              <div>
-                <select
-                  value={form.budgetType}
-                  onChange={(e) =>
-                    set('budgetType', e.target.value as ProjectFormValues['budgetType'])
-                  }
-                  className={cn(inputCls, 'max-w-xs')}
-                >
-                  <option value="NO_BUDGET">No budget</option>
-                  <option value="TOTAL_PROJECT_HOURS">Total project hours</option>
-                  <option value="TOTAL_PROJECT_FEES">Total project fees / costs</option>
-                </select>
-                <p className={cn(helpCls, 'mt-1')}>
-                  Set a budget to track project progress.
-                </p>
-              </div>
-            </div>
-            {form.budgetType !== 'NO_BUDGET' && (
-              <div className="grid gap-1.5 sm:grid-cols-[auto_1fr] sm:items-center">
-                <span className="text-sm font-medium text-foreground">Amount</span>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className={cn(inputCls, 'max-w-xs tabular-nums')}
-                  value={form.budgetAmount ?? ''}
-                  onChange={(e) =>
-                    set('budgetAmount', e.target.value === '' ? null : Number(e.target.value))
-                  }
-                />
-              </div>
-            )}
           </div>
         )}
 
@@ -534,36 +508,6 @@ export function ProjectFormPage() {
                 />
               </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">Budget</p>
-              <p className={helpCls}>Set a budget to track project progress.</p>
-              <select
-                value={form.budgetType}
-                onChange={(e) =>
-                  set('budgetType', e.target.value as ProjectFormValues['budgetType'])
-                }
-                className={cn(inputCls, 'mt-1 max-w-xs')}
-              >
-                <option value="NO_BUDGET">No budget</option>
-                <option value="TOTAL_PROJECT_HOURS">Total project hours</option>
-                <option value="TOTAL_PROJECT_FEES">Total project fees / costs</option>
-              </select>
-            </div>
-            {form.budgetType !== 'NO_BUDGET' && (
-              <div className="grid gap-1.5 sm:grid-cols-[auto_1fr] sm:items-center">
-                <span className="text-sm font-medium text-foreground">Amount</span>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className={cn(inputCls, 'max-w-xs tabular-nums')}
-                  value={form.budgetAmount ?? ''}
-                  onChange={(e) =>
-                    set('budgetAmount', e.target.value === '' ? null : Number(e.target.value))
-                  }
-                />
-              </div>
-            )}
           </div>
         )}
 

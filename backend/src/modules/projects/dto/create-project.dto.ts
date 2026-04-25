@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BillingMethod, BudgetType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsNumber,
@@ -11,7 +12,10 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { ProjectAssignmentLineDto } from './project-assignment-line.dto';
+import { ProjectTaskLineDto } from './project-task-line.dto';
 
 export class CreateProjectDto {
   @ApiProperty()
@@ -97,9 +101,24 @@ export class CreateProjectDto {
   notes?: string;
 
   @ApiPropertyOptional({
-    description: 'JSON：billableRateMode、team、tasks、invoice、spentAmount 等',
+    description:
+      'JSON: billableRateMode, invoice, spentAmount, etc. (tasks/team use `tasks` / `assignments` fields)',
   })
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ type: [ProjectTaskLineDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProjectTaskLineDto)
+  tasks?: ProjectTaskLineDto[];
+
+  @ApiPropertyOptional({ type: [ProjectAssignmentLineDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProjectAssignmentLineDto)
+  assignments?: ProjectAssignmentLineDto[];
 }

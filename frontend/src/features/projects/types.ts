@@ -59,7 +59,9 @@ export type ProjectMetadata = {
   costsAmount?: number
   /** 主负责人 userId，用于「按经理筛选」 */
   primaryManagerUserId?: string | null
+  /** @deprecated Legacy only; use API `tasks` on ProjectRecord */
   tasks?: ProjectFormTask[]
+  /** @deprecated Legacy only; use API `team` on ProjectRecord */
   team?: ProjectFormTeamMember[]
   invoice?: {
     dueMode: InvoiceDueModeUi
@@ -94,6 +96,24 @@ export type ProjectRecord = {
   organizationId: string
   spentAmount: number
   costsAmount: number
+  /** From `project_tasks`；无关系数据时见 metadata 回退。 */
+  tasks?: ProjectApiTaskRow[]
+  /** From `project_assignments`。 */
+  team?: ProjectApiTeamRow[]
+}
+
+export type ProjectApiTaskRow = {
+  taskId: string
+  name: string
+  isBillable: boolean
+  hourlyRate: number
+}
+
+export type ProjectApiTeamRow = {
+  userId: string
+  name: string
+  isManager: boolean
+  billableRate: number
 }
 
 export type ProjectsPaginatedResponse = {
@@ -251,7 +271,7 @@ export function projectTasksFromCommonItems(common: TaskListItem[]): ProjectForm
 }
 
 /**
- * 编辑项目：只展示 metadata 中已保存的任务行；名称若任务库中仍存在则与库同步
+ * 编辑项目：只展示已保存任务行（API `tasks` 或旧 metadata）；名称若任务库中仍存在则与库同步
  */
 export function projectTasksForEditFromSaved(
   saved: ProjectFormTask[] | undefined,
@@ -329,7 +349,22 @@ export function projectTeamForEditFromSaved(
 
 export function projectFormValuesFromRecord(p: ProjectRecord): ProjectFormValues {
   const meta = p.metadata ?? {}
-  const rawTasks = meta.tasks
+  const fromApiTasks = p.tasks?.length
+    ? p.tasks.map((t) => ({
+        taskId: t.taskId,
+        name: t.name,
+        isBillable: t.isBillable,
+        hourlyRate: t.hourlyRate ?? 0,
+      }))
+    : null
+  const fromMetaTasks = meta.tasks
+  const rawTasks = fromApiTasks?.length
+    ? fromApiTasks
+    : fromMetaTasks?.length
+      ? (fromMetaTasks as TaskRowSaved[]).map((t) => normalizeProjectFormTask(t))
+      : []
+  const fromApiTeam = p.team?.length ? p.team : null
+  const fromMetaTeam = meta.team
   return {
     clientId: p.clientId,
     name: p.name,
@@ -347,10 +382,13 @@ export function projectFormValuesFromRecord(p: ProjectRecord): ProjectFormValues
     spentAmount: p.spentAmount,
     costsAmount: p.costsAmount,
     primaryManagerUserId: meta.primaryManagerUserId ?? null,
-    tasks: rawTasks?.length
-      ? (rawTasks as TaskRowSaved[]).map((t) => normalizeProjectFormTask(t))
-      : [],
-    team: meta.team?.length ? meta.team : [],
+    tasks: rawTasks,
+    team:
+      fromApiTeam && fromApiTeam.length > 0
+        ? fromApiTeam
+        : fromMetaTeam?.length
+          ? fromMetaTeam
+          : [],
     invoice: {
       dueMode: meta.invoice?.dueMode ?? 'upon_receipt',
       poNumber: meta.invoice?.poNumber ?? '',

@@ -19,21 +19,40 @@ function withQuery(path: string, q: Record<string, string | number | undefined>)
   return s ? `${path}?${s}` : path
 }
 
+/**
+ * 任务/团队由 API `tasks` / `assignments` 写入表，不写入 metadata。
+ */
 function buildMetadataFromForm(
   form: ProjectFormValues,
   existing: ProjectMetadata | null,
 ): ProjectMetadata {
+  const e = existing ?? {}
+  const { tasks: _dropT, team: _dropG, ...kept } = e
   return {
-    ...(existing ?? {}),
+    ...kept,
     billableRateMode: form.billableRateMode,
     reportPermission: form.reportPermission,
     spentAmount: form.spentAmount,
     costsAmount: form.costsAmount,
     primaryManagerUserId: form.primaryManagerUserId,
-    tasks: form.tasks,
-    team: form.team,
     invoice: form.invoice,
   }
+}
+
+function formTasksToApiBody(form: ProjectFormValues) {
+  return form.tasks.map((t) => ({
+    taskId: t.taskId,
+    isBillable: t.isBillable,
+    hourlyRate: t.hourlyRate,
+  }))
+}
+
+function formTeamToAssignmentsBody(form: ProjectFormValues) {
+  return form.team.map((m) => ({
+    userId: m.userId,
+    isManager: m.isManager,
+    projectBillableRate: m.billableRate,
+  }))
 }
 
 function uiTypeToApi(t: ProjectFormValues['projectType']): ApiBillingMethod {
@@ -49,10 +68,23 @@ function projectHourlyForApi(form: ProjectFormValues): number | null {
   return form.projectHourlyRate
 }
 
+/** T&M and Fixed fee do not use the budget fields in the UI; persist as no budget. */
+function budgetPayloadForForm(form: ProjectFormValues) {
+  if (form.projectType === 'time_materials' || form.projectType === 'fixed_fee') {
+    return { budgetType: 'NO_BUDGET' as const, budgetAmount: null as null }
+  }
+  return {
+    budgetType: form.budgetType,
+    budgetAmount:
+      form.budgetType === 'NO_BUDGET' ? null : (form.budgetAmount ?? null),
+  }
+}
+
 export function formValuesToCreatePayload(form: ProjectFormValues) {
   const billingMethod = uiTypeToApi(form.projectType)
   const isBillable = form.projectType !== 'non_billable'
   const metadata = buildMetadataFromForm(form, null)
+  const b = budgetPayloadForForm(form)
   return {
     clientId: form.clientId,
     name: form.name.trim(),
@@ -62,8 +94,9 @@ export function formValuesToCreatePayload(form: ProjectFormValues) {
     hourlyRate: projectHourlyForApi(form) ?? undefined,
     fixedFee:
       form.projectType === 'fixed_fee' ? form.projectFees : undefined,
-    budgetType: form.budgetType,
-    budgetAmount: form.budgetType === 'NO_BUDGET' ? undefined : (form.budgetAmount ?? undefined),
+    budgetType: b.budgetType,
+    budgetAmount:
+      b.budgetType === 'NO_BUDGET' ? undefined : (b.budgetAmount ?? undefined),
     isArchived: false,
     isPinned: false,
     startsOn: form.startDate.trim()
@@ -74,6 +107,8 @@ export function formValuesToCreatePayload(form: ProjectFormValues) {
       : undefined,
     notes: form.notes.trim() || undefined,
     metadata: metadata as unknown as Record<string, unknown>,
+    tasks: formTasksToApiBody(form),
+    assignments: formTeamToAssignmentsBody(form),
   }
 }
 
@@ -87,6 +122,7 @@ export function formValuesToUpdatePayload(
     form,
     previous.metadata as ProjectMetadata | null,
   )
+  const b = budgetPayloadForForm(form)
   return {
     clientId: form.clientId,
     name: form.name.trim(),
@@ -96,8 +132,9 @@ export function formValuesToUpdatePayload(
     hourlyRate: projectHourlyForApi(form) ?? null,
     fixedFee:
       form.projectType === 'fixed_fee' ? form.projectFees : null,
-    budgetType: form.budgetType,
-    budgetAmount: form.budgetType === 'NO_BUDGET' ? null : form.budgetAmount,
+    budgetType: b.budgetType,
+    budgetAmount:
+      b.budgetType === 'NO_BUDGET' ? null : b.budgetAmount,
     startsOn: form.startDate.trim()
       ? `${form.startDate.trim()}T00:00:00.000Z`
       : null,
@@ -106,6 +143,8 @@ export function formValuesToUpdatePayload(
       : null,
     notes: form.notes.trim() || null,
     metadata: metadata as unknown as Record<string, unknown>,
+    tasks: formTasksToApiBody(form),
+    assignments: formTeamToAssignmentsBody(form),
   }
 }
 

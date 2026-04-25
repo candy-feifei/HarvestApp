@@ -483,7 +483,9 @@ export function ProjectsListPage() {
     for (const p of items) {
       const uid = p.metadata?.primaryManagerUserId
       if (!uid) continue
-      const member = p.metadata?.team?.find((t) => t.userId === uid)
+      const member =
+        p.team?.find((t) => t.userId === uid) ??
+        p.metadata?.team?.find((t) => t.userId === uid)
       s.set(uid, member?.name ?? uid)
     }
     return Array.from(s.entries()).map(([id, name]) => ({ id, name }))
