@@ -73,9 +73,9 @@ export const appNavSections: AppNavSection[] = [
       },
       {
         id: 'projects',
-        title: '项目',
+        title: 'Projects',
         to: '/projects',
-        description: '项目与预算',
+        description: 'Projects',
         icon: FolderOpen,
       },
       {
