@@ -333,11 +333,26 @@ export class ProjectsService {
             ]),
           )
 
+    const expenseCostsByProjectId =
+      projectIds.length === 0
+        ? new Map<string, number>()
+        : new Map<string, number>(
+            (
+              await this.prisma.expense.groupBy({
+                by: ['projectId'],
+                where: { projectId: { in: projectIds } },
+                _sum: { amount: true },
+              })
+            ).map((r) => [r.projectId, toNum(r._sum.amount) ?? 0]),
+          )
+
     return toPaginatedResult(
       data.map((row) =>
         this.toApiProject(row, {
           spentAmount: spentAndCostsByProjectId.get(row.id)?.spent ?? 0,
-          costsAmount: spentAndCostsByProjectId.get(row.id)?.costs ?? 0,
+          costsAmount:
+            (spentAndCostsByProjectId.get(row.id)?.costs ?? 0)
+            + (expenseCostsByProjectId.get(row.id) ?? 0),
         }),
       ),
       page,
@@ -393,9 +408,15 @@ export class ProjectsService {
       WHERE te."projectId" = ${id}
     `)
     const row = agg[0]
+    const expenseAgg = await this.prisma.expense.aggregate({
+      where: { projectId: id },
+      _sum: { amount: true },
+    })
     return this.toApiProject(p, {
       spentAmount: toNum(row?.spent ?? null) ?? 0,
-      costsAmount: toNum(row?.costs ?? null) ?? 0,
+      costsAmount:
+        (toNum(row?.costs ?? null) ?? 0)
+        + (toNum(expenseAgg._sum.amount) ?? 0),
     })
   }
 

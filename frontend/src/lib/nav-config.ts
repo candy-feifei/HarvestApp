@@ -121,9 +121,9 @@ export const appNavSections: AppNavSection[] = [
       },
       {
         id: 'reports',
-        title: '报表',
+        title: 'Reports',
         to: '/reports',
-        description: '时间与盈利分析',
+        description: 'Time and Profitability',
         icon: BarChart3,
       },
     ],

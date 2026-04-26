@@ -422,7 +422,7 @@ export function ProjectsListPage() {
   const dq = useDeferredValue(q)
   const [status, setStatus] = useState<StatusFilter>('active')
   const [clientId, setClientId] = useState('')
-  const [managerId, setManagerId] = useState('')
+  const [managerId] = useState('')
 
   const orgQuery = useQuery({
     queryKey: ['organization', 'context'],
@@ -468,19 +468,6 @@ export function ProjectsListPage() {
     return Array.from(m.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [items])
-
-  const managersInList = useMemo(() => {
-    const s = new Map<string, string>()
-    for (const p of items) {
-      const uid = p.metadata?.primaryManagerUserId
-      if (!uid) continue
-      const member =
-        p.team?.find((t) => t.userId === uid) ??
-        p.metadata?.team?.find((t) => t.userId === uid)
-      s.set(uid, member?.name ?? uid)
-    }
-    return Array.from(s.entries()).map(([id, name]) => ({ id, name }))
   }, [items])
 
   const byClient = useMemo(() => {
