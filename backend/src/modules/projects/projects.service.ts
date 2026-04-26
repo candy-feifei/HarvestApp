@@ -494,7 +494,38 @@ export class ProjectsService {
       data,
       include: projectDetailInclude,
     })
-    return this.toApiProject(p)
+
+    const assignedUserIds = new Set(assignLines.map((a) => a.userId))
+    const auto = await this.prisma.userOrganization.findMany({
+      where: {
+        organizationId: m.organizationId,
+        status: 'ACTIVE',
+        assignAllFutureProjects: true,
+      },
+      select: { userId: true },
+    })
+    const extraUserIds = auto
+      .map((r) => r.userId)
+      .filter((uid) => !assignedUserIds.has(uid))
+    if (extraUserIds.length > 0) {
+      await this.prisma.projectAssignment.createMany({
+        data: extraUserIds.map((userId) => ({
+          projectId: p.id,
+          userId,
+          isManager: false,
+        })),
+        skipDuplicates: true,
+      })
+    }
+
+    const full = await this.prisma.project.findFirst({
+      where: { id: p.id },
+      include: projectDetailInclude,
+    })
+    if (!full) {
+      return this.toApiProject(p)
+    }
+    return this.toApiProject(full)
   }
 
   async update(

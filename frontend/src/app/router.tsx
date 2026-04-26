@@ -46,6 +46,12 @@ const TeamInvitePage = lazy(() =>
   })),
 )
 
+const TeamMemberEditPage = lazy(() =>
+  import('@/features/team/pages/team-member-edit-page').then((m) => ({
+    default: m.TeamMemberEditPage,
+  })),
+)
+
 const ClientsPage = lazy(() =>
   import('@/features/clients/pages/clients-page').then((m) => ({
     default: m.ClientsPage,
@@ -263,6 +269,14 @@ export const appRouter = createBrowserRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             <TeamInvitePage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'team/members/:memberId/edit',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <TeamMemberEditPage />
           </Suspense>
         ),
       },

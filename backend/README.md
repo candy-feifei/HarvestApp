@@ -36,7 +36,10 @@ npm run prisma:generate
 npm run prisma:studio
 ```
 
-**开发模式说明：** `npm run start:dev` 使用 `tsc --watch` + `node --watch`（避免在 Windows 上 `nest start --watch` 通过 `taskkill` 结束子进程时偶发「进程已不存在」而崩溃）。若仍想使用 Nest CLI 内置监听，可运行 `npm run start:dev:nest`。
+**开发模式说明：**
+- 推荐 **`npm run start:dev`**（`nest start --watch`）。在部分 Windows 环境下，旧方案里的 **`node --watch` 会报 `Error: EPERM: operation not permitted, watch`**，与 Defender/杀软/目录监听限制有关，故默认已改为 Nest CLI 监听。
+- 若你更习惯 **先 `tsc --watch` 再跑 `dist/main.js`**，可用 **`npm run start:dev:concurrent`**（`tsc` + `nodemon` 监视 `dist`，不依赖 `node --watch`）。
+- 断点调试： **`npm run start:debug`**（`nest start --debug --watch`）；若需要 concurrent 变体，见 **`start:debug:concurrent`**。
 
 ---
 

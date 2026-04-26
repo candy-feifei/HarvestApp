@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Put, Query } from '@nestjs/common'
 import {
   ApiBearerAuth,
   ApiHeader,
@@ -9,6 +9,14 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator'
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto'
 import { InviteMemberDto } from './dto/invite-member.dto'
+import { CreateMemberRateDto } from './dto/create-member-rate.dto'
+import { TeamWeeklyQueryDto } from './dto/team-weekly.query.dto'
+import { UpdateMemberRateDto } from './dto/update-member-rate.dto'
+import { UpdateMemberDto } from './dto/update-member.dto'
+import {
+  ProjectAssignmentsQueryDto,
+  SetMemberProjectAssignmentsDto,
+} from './dto/member-project-assignments.dto'
 import { OrganizationContextService } from './organization-context.service'
 import { OrganizationService } from './organization.service'
 
@@ -72,6 +80,200 @@ export class OrganizationController {
       m.systemRole,
       dto,
     )
+  }
+
+  @Get('members/:memberId')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '获取成员详情（编辑页）' })
+  async getMember(
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.getMember(m.organizationId, memberId)
+  }
+
+  @Post('members/:memberId/resend-invitation')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '重新发送邀请邮件（仅 invited）' })
+  async resendInvitation(
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.resendInvitation(
+      m.organizationId,
+      m.organization.name,
+      m.systemRole,
+      memberId,
+    )
+  }
+
+  @Patch('members/:memberId')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '更新成员基本信息（编辑页保存）' })
+  async updateMember(
+    @Param('memberId') memberId: string,
+    @Body() dto: UpdateMemberDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.updateMember(m.organizationId, memberId, dto)
+  }
+
+  @Get('members/:memberId/rates')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '成员 rates 历史（默认费率）' })
+  async listMemberRates(
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.listMemberRates(m.organizationId, memberId)
+  }
+
+  @Post('members/:memberId/rates')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '新增成员 default rate（按 startDate 生效）' })
+  async createMemberRate(
+    @Param('memberId') memberId: string,
+    @Body() dto: CreateMemberRateDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.createMemberRate(
+      m.organizationId,
+      m.systemRole,
+      memberId,
+      dto,
+    )
+  }
+
+  @Patch('members/:memberId/rates/:rateId')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '更新成员某条 default rate 记录' })
+  async updateMemberRate(
+    @Param('memberId') memberId: string,
+    @Param('rateId') rateId: string,
+    @Body() dto: UpdateMemberRateDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.updateMemberRate(
+      m.organizationId,
+      m.systemRole,
+      memberId,
+      rateId,
+      dto,
+    )
+  }
+
+  @Delete('members/:memberId/rates/:rateId')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '删除成员某条 rate 历史' })
+  async deleteMemberRate(
+    @Param('memberId') memberId: string,
+    @Param('rateId') rateId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.deleteMemberRate(
+      m.organizationId,
+      m.systemRole,
+      memberId,
+      rateId,
+    )
+  }
+
+  @Get('members/:memberId/project-assignments')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '成员可分配项目（按客户分组）与当前分配状态' })
+  async getMemberProjectAssignments(
+    @Param('memberId') memberId: string,
+    @Query() q: ProjectAssignmentsQueryDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.getMemberProjectAssignments(
+      m.organizationId,
+      memberId,
+      q.q,
+    )
+  }
+
+  @Put('members/:memberId/project-assignments')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '设置成员项目分配与「未来项目自动加入」' })
+  async setMemberProjectAssignments(
+    @Param('memberId') memberId: string,
+    @Body() dto: SetMemberProjectAssignmentsDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.setMemberProjectAssignments(
+      m.organizationId,
+      m.systemRole,
+      memberId,
+      dto,
+    )
+  }
+
+  @Get('team/weekly')
+  @ApiHeader({
+    name: 'X-Organization-Id',
+    required: false,
+  })
+  @ApiOperation({
+    summary: 'Team：按 ISO 周汇总（列表页用）',
+    description:
+      '返回本周总工时、可计费/不可计费拆分、团队容量与成员明细（含 utilization）。',
+  })
+  async teamWeeklySummary(
+    @Query() q: TeamWeeklyQueryDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.getTeamWeeklySummary(m.organizationId, q.week)
   }
 
   @Get()
