@@ -876,7 +876,6 @@ export function ReportsPage() {
           ) : null}
           <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <div>
-              <div className="text-xs text-muted-foreground">Currency</div>
               <select
                 className={cn(inputCls, 'mt-0.5 w-full')}
                 value={fCurrency || cur}
