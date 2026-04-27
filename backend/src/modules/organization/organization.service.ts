@@ -21,6 +21,7 @@ import { UpdateOrganizationRoleDto } from './dto/update-organization-role.dto';
 import {
   SetMemberProjectAssignmentsDto,
 } from './dto/member-project-assignments.dto';
+import { SetMemberPasswordDto } from './dto/set-member-password.dto';
 
 const canInvite: SystemRole[] = ['ADMINISTRATOR', 'MANAGER'];
 const canManageRates: SystemRole[] = ['ADMINISTRATOR', 'MANAGER'];
@@ -464,6 +465,7 @@ export class OrganizationService {
             lastName: true,
             invitationStatus: true,
             timezone: true,
+            avatarUrl: true,
           },
         },
         rateHistories: {
@@ -484,6 +486,9 @@ export class OrganizationService {
       lastName: row.user.lastName,
       invitationStatus: row.user.invitationStatus,
       timezone: row.user.timezone,
+      avatarUrl: row.user.avatarUrl ?? null,
+      emailNotifyManagedPeopleTimesheets: row.emailNotifyManagedPeopleTimesheets,
+      emailNotifyManagedProjectTimesheets: row.emailNotifyManagedProjectTimesheets,
       employeeId: row.employeeId ?? null,
       employmentType: row.employmentType,
       jobLabel: row.jobLabel ?? null,
@@ -709,6 +714,18 @@ export class OrganizationService {
       ...(dto.employmentType != null ? { employmentType: dto.employmentType } : {}),
       ...(dto.jobLabel !== undefined ? { jobLabel: dto.jobLabel?.trim() || null } : {}),
       ...(dto.isPinned !== undefined ? { isPinned: dto.isPinned } : {}),
+      ...(dto.emailNotifyManagedPeopleTimesheets !== undefined
+        ? {
+            emailNotifyManagedPeopleTimesheets:
+              dto.emailNotifyManagedPeopleTimesheets,
+          }
+        : {}),
+      ...(dto.emailNotifyManagedProjectTimesheets !== undefined
+        ? {
+            emailNotifyManagedProjectTimesheets:
+              dto.emailNotifyManagedProjectTimesheets,
+          }
+        : {}),
     };
     if (touchesRole) {
       if (dto.systemRole != null) uoData.systemRole = dto.systemRole;
@@ -729,12 +746,16 @@ export class OrganizationService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      if (email || firstName || lastName || tz) {
+      if (email || firstName || lastName || tz || dto.avatarUrl !== undefined) {
         const data: Prisma.UserUpdateInput = {};
         if (email) data.email = email;
         if (firstName) data.firstName = firstName.slice(0, 120);
         if (lastName) data.lastName = lastName.slice(0, 120);
         if (tz) data.timezone = tz.slice(0, 80);
+        if (dto.avatarUrl !== undefined) {
+          const a = dto.avatarUrl.trim();
+          data.avatarUrl = a ? a.slice(0, 2000) : null;
+        }
         await tx.user.update({ where: { id: row.userId }, data });
       }
 
@@ -964,13 +985,17 @@ export class OrganizationService {
 
   private async assertCanRemoveOrArchiveMember(
     organizationId: string,
-    row: { id: string; userId: string; systemRole: SystemRole },
+    row: { id: string; userId: string; systemRole: SystemRole; status: string },
     actorUserId: string,
   ) {
     if (row.userId === actorUserId) {
       throw new BadRequestException('不能对本人执行此操作');
     }
-    if (row.systemRole === 'ADMINISTRATOR') {
+    // 仅对「当前仍在团队中」的管理员做「至少留一名活跃管理员」校验；已归档行删除/归档不受此条限制
+    if (
+      row.status === 'ACTIVE'
+      && row.systemRole === 'ADMINISTRATOR'
+    ) {
       const n = await this.prisma.userOrganization.count({
         where: {
           organizationId,
@@ -998,7 +1023,7 @@ export class OrganizationService {
     }
     const row = await this.prisma.userOrganization.findFirst({
       where: { id: memberId, organizationId, status: 'ACTIVE' },
-      select: { id: true, userId: true, systemRole: true },
+      select: { id: true, userId: true, systemRole: true, status: true },
     });
     if (!row) {
       throw new NotFoundException('成员不存在或已归档');
@@ -1023,6 +1048,122 @@ export class OrganizationService {
   }
 
   /**
+   * 已归档成员列表（Team → View archived people）
+   */
+  async listArchivedMembers(organizationId: string) {
+    const rows = await this.prisma.userOrganization.findMany({
+      where: { organizationId, status: 'ARCHIVED' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            invitationStatus: true,
+          },
+        },
+        rateHistories: {
+          orderBy: { startDate: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: [
+        { archivedAt: 'desc' },
+        { user: { lastName: 'asc' } },
+        { user: { firstName: 'asc' } },
+      ],
+    });
+    return {
+      items: rows.map((r) => {
+        const rate = r.rateHistories[0];
+        return {
+          memberId: r.id,
+          userId: r.userId,
+          systemRole: r.systemRole,
+          email: r.user.email,
+          firstName: r.user.firstName,
+          lastName: r.user.lastName,
+          invitationStatus: r.user.invitationStatus,
+          weeklyCapacity: r.weeklyCapacity,
+          employeeId: r.employeeId,
+          employmentType: r.employmentType,
+          jobLabel: r.jobLabel,
+          archivedAt: r.archivedAt,
+          defaultBillableRatePerHour: rate
+            ? Number(rate.billableRate)
+            : 0,
+          costRatePerHour: rate ? Number(rate.costRate) : 0,
+        };
+      }),
+    };
+  }
+
+  /**
+   * 将归档成员恢复为活跃（重新出现在团队列表）
+   */
+  async restoreMember(
+    organizationId: string,
+    memberId: string,
+    actorSystemRole: string,
+    _actorUserId: string,
+  ) {
+    if (!canInvite.includes(actorSystemRole as SystemRole)) {
+      throw new ForbiddenException('无权限恢复成员');
+    }
+    const row = await this.prisma.userOrganization.findFirst({
+      where: { id: memberId, organizationId, status: 'ARCHIVED' },
+      select: { id: true, userId: true },
+    });
+    if (!row) {
+      throw new NotFoundException('成员不存在或未归档');
+    }
+    const otherActive = await this.prisma.userOrganization.findFirst({
+      where: {
+        organizationId,
+        userId: row.userId,
+        status: 'ACTIVE',
+        id: { not: row.id },
+      },
+      select: { id: true },
+    });
+    if (otherActive) {
+      throw new ConflictException('该用户已以其他身份在本组织中活跃');
+    }
+    await this.prisma.userOrganization.update({
+      where: { id: row.id },
+      data: {
+        status: 'ACTIVE',
+        archivedAt: null,
+      },
+    });
+    return { restored: true as const, memberId: row.id };
+  }
+
+  /**
+   * 仅管理员：为组织内某成员设置新的登录密码（不校验旧密码）。
+   */
+  async setMemberPassword(
+    organizationId: string,
+    memberId: string,
+    dto: SetMemberPasswordDto,
+    actorSystemRole: string,
+  ) {
+    if (!canChangeMemberSystemRole.includes(actorSystemRole as SystemRole)) {
+      throw new ForbiddenException('无权限设置成员密码');
+    }
+    const row = await this.prisma.userOrganization.findFirst({
+      where: { id: memberId, organizationId, status: 'ACTIVE' },
+      select: { id: true, userId: true },
+    });
+    if (!row) {
+      throw new NotFoundException('成员不存在或已归档');
+    }
+    await this.authService.setPasswordForUser(row.userId, dto.newPassword);
+    return { updated: true as const, memberId: row.id };
+  }
+
+  /**
    * 从本组织完全移除：删除 UO 及关联的 rate 历史、并去掉本组织项目的分配。
    * User 与历史工时等记录保留（按 userId）。
    */
@@ -1036,11 +1177,15 @@ export class OrganizationService {
       throw new ForbiddenException('无权限移除此成员');
     }
     const row = await this.prisma.userOrganization.findFirst({
-      where: { id: memberId, organizationId, status: 'ACTIVE' },
-      select: { id: true, userId: true, systemRole: true },
+      where: {
+        id: memberId,
+        organizationId,
+        status: { in: ['ACTIVE', 'ARCHIVED'] },
+      },
+      select: { id: true, userId: true, systemRole: true, status: true },
     });
     if (!row) {
-      throw new NotFoundException('成员不存在或已归档');
+      throw new NotFoundException('成员不存在或不属于该组织');
     }
     await this.assertCanRemoveOrArchiveMember(organizationId, row, actorUserId);
     const userId = row.userId;

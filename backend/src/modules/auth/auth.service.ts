@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -328,5 +329,57 @@ export class AuthService {
     ]);
     await this.logAttempt(user.email, user.id, true, ip, userAgent, null);
     return this.signAccessToken(user.id, user.email);
+  }
+
+  /**
+   * 为指定用户设置本地密码。供组织管理员在受控流程中调用。
+   */
+  async setPasswordForUser(userId: string, newPassword: string): Promise<void> {
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash,
+        failedLoginCount: 0,
+        lockedUntil: null,
+      },
+    });
+  }
+
+  /**
+   * 已登录用户修改自己的密码。
+   */
+  async changePassword(
+    userId: string,
+    dto: { currentPassword: string; newPassword: string },
+  ) {
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'New password must be different from your current password',
+      );
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account has no password set yet. Use the invitation or reset link from your email first.',
+      );
+    }
+    const match = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!match) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash,
+        failedLoginCount: 0,
+        lockedUntil: null,
+      },
+    });
+    return { changed: true as const };
   }
 }

@@ -41,7 +41,8 @@ async function main() {
       systemRole: 'ADMINISTRATOR',
       status: 'ACTIVE',
     },
-    update: { status: 'ACTIVE' },
+    /** 演示账号始终为组织管理员（重跑 seed 会纠正历史 MEMBER 等角色） */
+    update: { status: 'ACTIVE', systemRole: 'ADMINISTRATOR' },
   });
 
   // eslint-disable-next-line no-console

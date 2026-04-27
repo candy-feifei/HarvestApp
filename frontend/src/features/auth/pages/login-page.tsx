@@ -4,6 +4,7 @@ import { ApiError } from '@/lib/api/http'
 import { useAuth } from '@/lib/auth/auth-context'
 import { loginRequest } from '@/features/auth/api'
 import { Button } from '@/components/ui/button'
+import { defaultAppLandingPath } from '@/lib/nav-config'
 
 export function LoginPage() {
   const { isAuthenticated, setSessionToken } = useAuth()
@@ -13,7 +14,7 @@ export function LoginPage() {
   const from =
     typeof state?.from === 'string' && state.from !== '/login'
       ? state.from
-      : '/'
+      : defaultAppLandingPath
 
   const [email, setEmail] = useState('demo@harvest.app')
   const [password, setPassword] = useState('demo123')

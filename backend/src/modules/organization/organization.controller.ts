@@ -13,6 +13,7 @@ import { InviteMemberDto } from './dto/invite-member.dto'
 import { CreateMemberRateDto } from './dto/create-member-rate.dto'
 import { TeamWeeklyQueryDto } from './dto/team-weekly.query.dto'
 import { UpdateMemberRateDto } from './dto/update-member-rate.dto'
+import { SetMemberPasswordDto } from './dto/set-member-password.dto'
 import { UpdateMemberDto } from './dto/update-member.dto'
 import { UpdateOrganizationRoleDto } from './dto/update-organization-role.dto'
 import {
@@ -169,6 +170,20 @@ export class OrganizationController {
     )
   }
 
+  @Get('members/archived')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '已归档成员列表（从团队列表隐藏的成员）' })
+  async listArchivedMembers(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.listArchivedMembers(m.organizationId)
+  }
+
   @Get('members/:memberId')
   @ApiHeader({ name: 'X-Organization-Id', required: false })
   @ApiOperation({ summary: '获取成员详情（编辑页）' })
@@ -218,6 +233,27 @@ export class OrganizationController {
       xOrganizationId,
     )
     return this.organizationService.updateMember(
+      m.organizationId,
+      memberId,
+      dto,
+      m.systemRole,
+    )
+  }
+
+  @Post('members/:memberId/password')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '管理员为成员设置新登录密码（Security 页）' })
+  async setMemberPassword(
+    @Param('memberId') memberId: string,
+    @Body() dto: SetMemberPasswordDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.setMemberPassword(
       m.organizationId,
       memberId,
       dto,
@@ -359,6 +395,26 @@ export class OrganizationController {
       xOrganizationId,
     )
     return this.organizationService.archiveMember(
+      m.organizationId,
+      memberId,
+      m.systemRole,
+      user.userId,
+    )
+  }
+
+  @Post('members/:memberId/restore')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '恢复已归档成员（重新加入团队列表）' })
+  async restoreMember(
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.restoreMember(
       m.organizationId,
       memberId,
       m.systemRole,

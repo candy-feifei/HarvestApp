@@ -37,3 +37,13 @@ export function resetPasswordRequest(token: string, password: string) {
     body: JSON.stringify({ token, password }),
   })
 }
+
+export function changePasswordRequest(body: {
+  currentPassword: string
+  newPassword: string
+}) {
+  return apiRequest<{ changed: true }>('/account/change-password', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}

@@ -12,17 +12,20 @@ import { fetchOrganizationContext } from '@/features/clients/api'
 import {
   getTeamMember,
   listMemberRates,
+  listTeamRoles,
   createMemberRate,
   deleteMemberRate,
   resendTeamInvitation,
   updateMemberRate,
   updateTeamMember,
+  uploadMemberAvatar,
   type MemberRateRow,
   type UpdateMemberRatePayload,
   type UpdateTeamMemberPayload,
 } from '@/features/team/api'
 import { TeamMemberAssignedProjectsPanel } from '@/features/team/components/team-member-assigned-projects'
 import { TeamMemberPermissionsPanel } from '@/features/team/components/team-member-permissions-panel'
+import { TeamMemberSecurityPanel } from '@/features/team/components/team-member-security-panel'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -78,6 +81,12 @@ export function TeamMemberEditPage() {
     enabled: Boolean(id) && tab === 'rates',
   })
 
+  const teamRolesQ = useQuery({
+    queryKey: ['team', 'roles'],
+    queryFn: listTeamRoles,
+    enabled: Boolean(id) && tab === 'basic',
+  })
+
   const member = q.data
   const canEditProjectAssignments = useMemo(() => {
     if (orgCtxQ.isLoading) return false
@@ -88,6 +97,10 @@ export function TeamMemberEditPage() {
     if (orgCtxQ.isLoading) return false
     return orgCtxQ.data?.systemRole === 'ADMINISTRATOR'
   }, [orgCtxQ.isLoading, orgCtxQ.data?.systemRole])
+  const isViewingSelf = useMemo(
+    () => Boolean(id && orgCtxQ.data?.memberId === id),
+    [id, orgCtxQ.data?.memberId],
+  )
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [workEmail, setWorkEmail] = useState('')
@@ -98,9 +111,30 @@ export function TeamMemberEditPage() {
   const [jobLabel, setJobLabel] = useState('')
   const [weeklyCapacity, setWeeklyCapacity] = useState(40)
   const [timezone, setTimezone] = useState('UTC')
+  const [emailNotifyManagedPeople, setEmailNotifyManagedPeople] = useState(true)
+  const [emailNotifyManagedProjects, setEmailNotifyManagedProjects] =
+    useState(true)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [removeAvatar, setRemoveAvatar] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
 
   const canEdit = useMemo(() => tab === 'basic', [tab])
+
+  const [avatarObjectUrl, setAvatarObjectUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarObjectUrl(null)
+      return
+    }
+    const u = URL.createObjectURL(avatarFile)
+    setAvatarObjectUrl(u)
+    return () => {
+      URL.revokeObjectURL(u)
+    }
+  }, [avatarFile])
+
+  const displayAvatarSrc =
+    removeAvatar ? null : (avatarObjectUrl ?? member?.avatarUrl ?? null)
 
   const timezoneOptions = useMemo(() => {
     if (!member?.timezone) return TIMEZONE_OPTIONS
@@ -112,6 +146,21 @@ export function TeamMemberEditPage() {
       ...TIMEZONE_OPTIONS,
     ]
   }, [member?.timezone])
+
+  /** 组织里配置的角色名；若当前 jobLabel 不在列表中则保留一条以兼容历史数据 */
+  const jobRoleSelectOptions = useMemo(() => {
+    const items = teamRolesQ.data?.items ?? []
+    const fromOrg = new Set(
+      items
+        .map((r) => r.name.trim())
+        .filter((n) => n.length > 0),
+    )
+    const current = jobLabel.trim()
+    if (current && !fromOrg.has(current)) {
+      fromOrg.add(current)
+    }
+    return [...fromOrg].sort((a, b) => a.localeCompare(b))
+  }, [teamRolesQ.data?.items, jobLabel])
 
   useEffect(() => {
     setIsDirty(false)
@@ -130,10 +179,25 @@ export function TeamMemberEditPage() {
     setTimezone(
       member.timezone && member.timezone.trim() ? member.timezone : 'UTC',
     )
+    setEmailNotifyManagedPeople(
+      member.emailNotifyManagedPeopleTimesheets !== false,
+    )
+    setEmailNotifyManagedProjects(
+      member.emailNotifyManagedProjectTimesheets !== false,
+    )
+    setAvatarFile(null)
+    setRemoveAvatar(false)
   }, [member, isDirty, id])
 
   const saveMut = useMutation({
     mutationFn: async () => {
+      let avatarUrl: string | undefined
+      if (removeAvatar) {
+        avatarUrl = ''
+      } else if (avatarFile) {
+        const { avatarUrl: uploaded } = await uploadMemberAvatar(avatarFile)
+        avatarUrl = uploaded
+      }
       const payload: UpdateTeamMemberPayload = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -143,11 +207,16 @@ export function TeamMemberEditPage() {
         jobLabel: jobLabel.trim(),
         weeklyCapacity,
         timezone: timezone.trim(),
+        emailNotifyManagedPeopleTimesheets: emailNotifyManagedPeople,
+        emailNotifyManagedProjectTimesheets: emailNotifyManagedProjects,
+        ...(avatarUrl !== undefined ? { avatarUrl } : {}),
       }
       return updateTeamMember(id, payload)
     },
     onSuccess: async () => {
       setIsDirty(false)
+      setAvatarFile(null)
+      setRemoveAvatar(false)
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['team', 'weekly'] }),
         qc.invalidateQueries({ queryKey: ['team', 'member', id] }),
@@ -271,10 +340,18 @@ export function TeamMemberEditPage() {
       <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[260px_1fr]">
         <aside className="rounded-md border border-border bg-white p-3 shadow-sm">
           <div className="flex items-center gap-3 px-2 py-2">
-            <div className="flex size-10 items-center justify-center rounded-full bg-muted text-sm font-semibold">
-              {(member.firstName[0] ?? '').toUpperCase()}
-              {(member.lastName[0] ?? '').toUpperCase()}
-            </div>
+            {displayAvatarSrc ? (
+              <img
+                src={displayAvatarSrc}
+                alt=""
+                className="size-10 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex size-10 items-center justify-center rounded-full bg-muted text-sm font-semibold">
+                {(member.firstName[0] ?? '').toUpperCase()}
+                {(member.lastName[0] ?? '').toUpperCase()}
+              </div>
+            )}
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-foreground">
                 {member.firstName} {member.lastName}
@@ -732,18 +809,37 @@ export function TeamMemberEditPage() {
                   <label className={labelCls} htmlFor="m-roles">
                     Roles
                   </label>
-                  <input
+                  <select
                     id="m-roles"
-                    className={inputCls}
+                    className={cn(selectCls, 'max-w-full sm:max-w-md')}
                     value={jobLabel}
                     onChange={(e) => {
                       setIsDirty(true)
                       setJobLabel(e.target.value)
                     }}
-                    placeholder="e.g. Designer, Senior, NYC"
-                  />
+                    disabled={teamRolesQ.isLoading}
+                  >
+                    <option value="">— None —</option>
+                    {jobRoleSelectOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    How you would describe this person, like Designer, Senior, NYC, etc. Roles help organize the Team section and other reports.
+                    Options come from your organization&apos;s role list. Roles help
+                    organize the Team section and other reports.{' '}
+                    <Link
+                      to="/team?tab=roles"
+                      className="text-primary underline-offset-2 hover:underline"
+                    >
+                      Manage roles
+                    </Link>
+                    {teamRolesQ.isError ? (
+                      <span className="ml-1 text-destructive">
+                        (Could not load role list.)
+                      </span>
+                    ) : null}
                   </p>
                 </div>
 
@@ -813,6 +909,80 @@ export function TeamMemberEditPage() {
                   </select>
                 </div>
 
+                <div className={fieldWrap}>
+                  <span className={labelCls}>Photo</span>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                    <input
+                      id="m-photo"
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      className="text-sm file:mr-2 file:rounded file:border file:border-border file:bg-white file:px-2 file:py-1.5"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) {
+                          setIsDirty(true)
+                          setRemoveAvatar(false)
+                          setAvatarFile(f)
+                        }
+                        e.target.value = ''
+                      }}
+                    />
+                    {(Boolean(member.avatarUrl) || Boolean(avatarFile)) &&
+                    !removeAvatar ? (
+                      <button
+                        type="button"
+                        className="text-sm text-destructive underline-offset-2 hover:underline"
+                        onClick={() => {
+                          setIsDirty(true)
+                          setAvatarFile(null)
+                          setRemoveAvatar(true)
+                        }}
+                      >
+                        Remove photo
+                      </button>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Suggested size: 100×100. JPEG, PNG, GIF, or WebP, up to 2&nbsp;MB.
+                  </p>
+                </div>
+
+                <div className={fieldWrap}>
+                  <span className={labelCls}>Notifications</span>
+                  <div className="mt-2 space-y-2.5">
+                    <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 size-4 rounded border-border accent-primary"
+                        checked={emailNotifyManagedPeople}
+                        onChange={(e) => {
+                          setIsDirty(true)
+                          setEmailNotifyManagedPeople(e.target.checked)
+                        }}
+                      />
+                      <span>
+                        Email this person if timesheets are submitted for
+                        people they manage
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 size-4 rounded border-border accent-primary"
+                        checked={emailNotifyManagedProjects}
+                        onChange={(e) => {
+                          setIsDirty(true)
+                          setEmailNotifyManagedProjects(e.target.checked)
+                        }}
+                      />
+                      <span>
+                        Email this person if timesheets are submitted for
+                        projects they manage
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
                   <Button
                     type="button"
@@ -833,10 +1003,15 @@ export function TeamMemberEditPage() {
                 </div>
               </form>
             </>
+          ) : tab === 'security' ? (
+            <TeamMemberSecurityPanel
+              firstName={member.firstName}
+              memberId={id}
+              isViewingSelf={isViewingSelf}
+              canSetOtherPassword={canChangePermissions}
+            />
           ) : (
-            <div className="text-sm text-muted-foreground">
-              Coming soon.
-            </div>
+            <div className="text-sm text-muted-foreground">Coming soon.</div>
           )}
         </main>
       </div>

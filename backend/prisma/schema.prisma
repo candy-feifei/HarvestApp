@@ -99,6 +99,10 @@ model UserOrganization {
   weeklyCapacity  Int            @default(40)
   /// 勾选后，新创建的项目会自动将该用户加入为成员（isManager 默认为 false，可在单项目上再调）
   assignAllFutureProjects Boolean  @default(false)
+  /// 下属提交工时报时是否邮件通知此人（Manager 流程）
+  emailNotifyManagedPeopleTimesheets  Boolean  @default(true) @map("email_notify_managed_people_timesheets")
+  /// 其负责项目上有成员提交工时报时是否邮件通知此人
+  emailNotifyManagedProjectTimesheets  Boolean  @default(true) @map("email_notify_managed_project_timesheets")
   /// 可选。组织内员工工号/唯一标识
   employeeId      String?
   employmentType  EmploymentType @default(EMPLOYEE)

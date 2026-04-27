@@ -4,6 +4,7 @@ import { ApiError } from '@/lib/api/http';
 import { useAuth } from '@/lib/auth/auth-context';
 import { registerRequest } from '@/features/auth/api';
 import { Button } from '@/components/ui/button';
+import { defaultAppLandingPath } from '@/lib/nav-config';
 
 export function RegisterPage() {
   const { isAuthenticated, setSessionToken } = useAuth();
@@ -15,7 +16,7 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   if (isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={defaultAppLandingPath} replace />;
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -29,7 +30,7 @@ export function RegisterPage() {
         name.trim() || undefined,
       );
       setSessionToken(res.access_token);
-      navigate('/', { replace: true });
+      navigate(defaultAppLandingPath, { replace: true });
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : '注册失败，请稍后重试';

@@ -107,6 +107,10 @@ export type TeamMemberDetail = {
   lastName: string
   invitationStatus: string
   timezone: string
+  /** 用户头像（如 `/api/uploads/avatars/...`）或 null */
+  avatarUrl?: string | null
+  emailNotifyManagedPeopleTimesheets?: boolean
+  emailNotifyManagedProjectTimesheets?: boolean
   employeeId: string | null
   employmentType: 'EMPLOYEE' | 'CONTRACTOR'
   jobLabel: string | null
@@ -139,12 +143,25 @@ export type UpdateTeamMemberPayload = Partial<{
   systemRole: SystemRoleName
   managerPermissions: ManagerPermissions
   isPinned: boolean
+  avatarUrl: string
+  emailNotifyManagedPeopleTimesheets: boolean
+  emailNotifyManagedProjectTimesheets: boolean
 }>
 
 export function updateTeamMember(memberId: string, body: UpdateTeamMemberPayload) {
   return apiRequest<TeamMemberDetail>(`/organizations/members/${memberId}`, {
     method: 'PATCH',
     body: JSON.stringify(body),
+  })
+}
+
+/** 上传成员头像，返回可写入 `avatarUrl` 的路径。 */
+export function uploadMemberAvatar(file: File) {
+  const body = new FormData()
+  body.append('file', file)
+  return apiRequest<{ avatarUrl: string }>('/uploads/avatar', {
+    method: 'POST',
+    body,
   })
 }
 
@@ -155,10 +172,39 @@ export function archiveTeamMember(memberId: string) {
   )
 }
 
+export type ArchivedTeamMemberRow = Omit<TeamMemberRow, 'isPinned'> & {
+  archivedAt: string | null
+}
+
+export function listArchivedTeamMembers() {
+  return apiRequest<{ items: ArchivedTeamMemberRow[] }>(
+    '/organizations/members/archived',
+    { method: 'GET' },
+  )
+}
+
+export function restoreTeamMember(memberId: string) {
+  return apiRequest<{ restored: true; memberId: string }>(
+    `/organizations/members/${memberId}/restore`,
+    { method: 'POST' },
+  )
+}
+
 export function removeTeamMember(memberId: string) {
   return apiRequest<{ deleted: true; memberId: string }>(
     `/organizations/members/${memberId}`,
     { method: 'DELETE' },
+  )
+}
+
+/** 仅组织管理员：为该成员设置新的登录密码。 */
+export function setTeamMemberPassword(
+  memberId: string,
+  body: { newPassword: string },
+) {
+  return apiRequest<{ updated: true; memberId: string }>(
+    `/organizations/members/${memberId}/password`,
+    { method: 'POST', body: JSON.stringify(body) },
   )
 }
 

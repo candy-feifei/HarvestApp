@@ -15,7 +15,12 @@ async function bootstrap() {
   if (!existsSync(receiptsDir)) {
     mkdirSync(receiptsDir, { recursive: true });
   }
+  const avatarsDir = join(process.cwd(), 'uploads', 'avatars');
+  if (!existsSync(avatarsDir)) {
+    mkdirSync(avatarsDir, { recursive: true });
+  }
   app.use('/api/uploads/receipts', express.static(receiptsDir));
+  app.use('/api/uploads/avatars', express.static(avatarsDir));
 
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new AllExceptionsFilter());

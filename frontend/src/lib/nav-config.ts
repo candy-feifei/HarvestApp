@@ -135,6 +135,9 @@ export const appNavItemsFlat: AppNavItem[] = appNavSections.flatMap(
   (s) => s.items,
 )
 
+/** 登录后与访问 `/` 时进入的首个业务模块（与侧栏顺序一致） */
+export const defaultAppLandingPath = appNavItemsFlat[0]!.to
+
 export function getAppNavItem(id: string): AppNavItem | undefined {
   return (
     appNavItemsFlat.find((item) => item.id === id) ??

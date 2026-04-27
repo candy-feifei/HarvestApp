@@ -1,9 +1,13 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { RequireAuth } from '@/components/auth/require-auth'
 import { AppShell } from '@/components/layout/app-shell'
 import { PageLoading } from '@/components/layout/page-loading'
-import { appFooterNavItems, appNavItemsFlat } from '@/lib/nav-config'
+import {
+  appFooterNavItems,
+  appNavItemsFlat,
+  defaultAppLandingPath,
+} from '@/lib/nav-config'
 import { NotFoundPage } from '@/pages/not-found-page'
 
 const LoginPage = lazy(() =>
@@ -30,12 +34,6 @@ const ResetPasswordPage = lazy(() =>
   })),
 )
 
-const DashboardPage = lazy(() =>
-  import('@/features/dashboard/pages/dashboard-page').then((m) => ({
-    default: m.DashboardPage,
-  })),
-)
-
 const TeamPage = lazy(() =>
   import('@/features/team/pages/team-page').then((m) => ({ default: m.TeamPage })),
 )
@@ -43,6 +41,12 @@ const TeamPage = lazy(() =>
 const TeamInvitePage = lazy(() =>
   import('@/features/team/pages/team-invite-page').then((m) => ({
     default: m.TeamInvitePage,
+  })),
+)
+
+const TeamArchivedPage = lazy(() =>
+  import('@/features/team/pages/team-archived-page').then((m) => ({
+    default: m.TeamArchivedPage,
   })),
 )
 
@@ -236,7 +240,10 @@ export const appRouter = createBrowserRouter([
       </RequireAuth>
     ),
     children: [
-      { index: true, element: <DashboardPage /> },
+      {
+        index: true,
+        element: <Navigate to={defaultAppLandingPath} replace />,
+      },
       { path: 'clients/new', element: <NewClientPage /> },
       {
         path: 'clients/:clientId/edit',
@@ -275,6 +282,14 @@ export const appRouter = createBrowserRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             <TeamInvitePage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'team/archived',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <TeamArchivedPage />
           </Suspense>
         ),
       },

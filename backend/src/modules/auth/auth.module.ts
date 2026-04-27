@@ -7,6 +7,7 @@ import {
   parseDurationToSeconds,
   resolveJwtSecret,
 } from '../../config/jwt.config';
+import { AccountController } from './account.controller';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { MailService } from './mail.service';
@@ -33,7 +34,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       },
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, AccountController],
   providers: [AuthService, MailService, JwtStrategy, JwtAuthGuard],
   exports: [JwtModule, JwtAuthGuard, AuthService, MailService],
 })

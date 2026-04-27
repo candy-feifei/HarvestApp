@@ -102,4 +102,20 @@ export class UpdateMemberDto {
   @IsOptional()
   @IsBoolean()
   isPinned?: boolean;
+
+  @ApiPropertyOptional({ description: '用户头像地址（可传空串清除）' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  avatarUrl?: string;
+
+  @ApiPropertyOptional({ description: '工时报经其管理的人提交时发邮件' })
+  @IsOptional()
+  @IsBoolean()
+  emailNotifyManagedPeopleTimesheets?: boolean;
+
+  @ApiPropertyOptional({ description: '工时报经其负责的项目时发邮件' })
+  @IsOptional()
+  @IsBoolean()
+  emailNotifyManagedProjectTimesheets?: boolean;
 }

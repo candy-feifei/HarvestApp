@@ -381,7 +381,7 @@ function MembersPanel({
             <ChevronRight className="size-4" aria-hidden />
           </button>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
           <Button
             type="button"
             asChild
@@ -391,6 +391,14 @@ function MembersPanel({
               <UserPlus className="size-4" strokeWidth={2.25} aria-hidden />
               Invite person
             </Link>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-9 px-2 text-sm text-primary hover:bg-transparent hover:underline"
+            asChild
+          >
+            <Link to="/team/archived">View archived people</Link>
           </Button>
         </div>
       </div>
@@ -576,12 +584,14 @@ export function TeamPage() {
     mutationFn: (memberId: string) => archiveTeamMember(memberId),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['team', 'weekly'] })
+      await qc.invalidateQueries({ queryKey: ['team', 'archived'] })
     },
   })
   const deleteMut = useMutation({
     mutationFn: (memberId: string) => removeTeamMember(memberId),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['team', 'weekly'] })
+      await qc.invalidateQueries({ queryKey: ['team', 'archived'] })
     },
   })
   const rowActionPendingMemberId =

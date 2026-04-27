@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState, type FormEvent } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '@/lib/api/http'
-import { inviteTeamMember } from '@/features/team/api'
+import { inviteTeamMember, listTeamRoles } from '@/features/team/api'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -39,6 +39,25 @@ export function TeamInvitePage() {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  const teamRolesQ = useQuery({
+    queryKey: ['team', 'roles'],
+    queryFn: listTeamRoles,
+  })
+
+  const jobRoleSelectOptions = useMemo(() => {
+    const items = teamRolesQ.data?.items ?? []
+    const fromOrg = new Set(
+      items
+        .map((r) => r.name.trim())
+        .filter((n) => n.length > 0),
+    )
+    const current = jobLabel.trim()
+    if (current && !fromOrg.has(current)) {
+      fromOrg.add(current)
+    }
+    return [...fromOrg].sort((a, b) => a.localeCompare(b))
+  }, [teamRolesQ.data?.items, jobLabel])
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setFormError(null)
@@ -69,10 +88,10 @@ export function TeamInvitePage() {
           'message' in body
             ? String((body as { message: unknown }).message)
             : err.message
-        setFormError(msg || '邀请失败')
+        setFormError(msg || 'Invitation failed')
         return
       }
-      setFormError('网络异常，请稍后重试。')
+      setFormError('Something went wrong. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -84,7 +103,9 @@ export function TeamInvitePage() {
         Invite person
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        我们将向该同事发送加入团队的邀请邮件（未设置本地密码时会附带「设置密码」链接）。
+        We&apos;ll email this person an invitation to join your team. If they
+        don&apos;t have a password yet, the message will include a link to set
+        one.
       </p>
 
       <form onSubmit={onSubmit} className="mt-8 space-y-5">
@@ -153,7 +174,8 @@ export function TeamInvitePage() {
             autoComplete="off"
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            可选。组织内员工唯一标识。
+            Optional. A unique identifier for this employee within your
+            organization.
           </p>
         </div>
 
@@ -191,15 +213,33 @@ export function TeamInvitePage() {
           <label className={labelCls} htmlFor="inv-roles">
             Roles
           </label>
-          <input
+          <select
             id="inv-roles"
-            className={inputCls}
+            className={cn(selectCls, 'max-w-full sm:max-w-md')}
             value={jobLabel}
             onChange={(e) => setJobLabel(e.target.value)}
-            placeholder="例如 Designer, Senior, NYC"
-          />
+            disabled={teamRolesQ.isLoading}
+          >
+            <option value="">— None —</option>
+            {jobRoleSelectOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
           <p className="mt-1 text-xs text-muted-foreground">
-            可选。用于在团队与报表中描述该成员。
+            Optional. Options come from your organization&apos;s role list.{' '}
+            <Link
+              to="/team?tab=roles"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Manage roles
+            </Link>
+            {teamRolesQ.isError ? (
+              <span className="ml-1 text-destructive">
+                (Could not load role list.)
+              </span>
+            ) : null}
           </p>
         </div>
 
@@ -224,7 +264,8 @@ export function TeamInvitePage() {
             <span className="text-sm text-muted-foreground">hours per week</span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            可选。该成员每周可工作的小时数。
+            Optional. The number of hours per week this person is available to
+            work.
           </p>
         </div>
 
@@ -245,7 +286,9 @@ export function TeamInvitePage() {
             <span className="text-sm text-muted-foreground">per hour</span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            可选。向客户计费的默认可计费率，可按项目覆盖。
+            Optional. The rate you bill clients for this person&apos;s time. You
+            can override this rate on each project. Only Administrators and
+            Managers with permission can see billable rates and amounts.
           </p>
         </div>
 
@@ -266,7 +309,8 @@ export function TeamInvitePage() {
             <span className="text-sm text-muted-foreground">per hour</span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            可选。内部成本（美元/时）。
+            Optional. The internal cost that this person incurs on your
+            business. Only Administrators can see cost rates and amounts.
           </p>
         </div>
 
@@ -285,7 +329,7 @@ export function TeamInvitePage() {
             className="h-9 bg-primary text-primary-foreground hover:bg-primary/90"
             disabled={submitting}
           >
-            {submitting ? '处理中…' : 'Invite and continue'}
+            {submitting ? 'Working…' : 'Invite and continue'}
           </Button>
         </div>
       </form>

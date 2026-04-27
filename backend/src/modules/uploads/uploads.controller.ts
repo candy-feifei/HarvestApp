@@ -18,7 +18,14 @@ const receiptsDir = () => {
   return dir
 }
 
+const avatarsDir = () => {
+  const dir = join(process.cwd(), 'uploads', 'avatars')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  return dir
+}
+
 const allowedExt = /^\.(jpe?g|png|gif|webp|pdf)$/i
+const avatarExt = /^\.(jpe?g|png|gif|webp)$/i
 
 @Controller('uploads')
 @ApiTags('uploads')
@@ -70,5 +77,50 @@ export class UploadsController {
       )
     }
     return { receiptUrl: `/api/uploads/receipts/${file.filename}` as const }
+  }
+
+  @Post('avatar')
+  @ApiOperation({
+    summary: 'Upload profile photo (image only, max 2MB)',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          try {
+            cb(null, avatarsDir())
+          } catch (e) {
+            cb(e as Error, '')
+          }
+        },
+        filename: (_req, file, cb) => {
+          const ext = extname(file.originalname)
+          const safe = ext && ext.length <= 8 && avatarExt.test(ext) ? ext : '.bin'
+          cb(null, `${randomUUID()}${safe}`)
+        },
+      }),
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  uploadAvatar(@UploadedFile() file: Express.Multer.File | undefined) {
+    if (!file) {
+      throw new BadRequestException('Please select a file to upload')
+    }
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(
+      file.mimetype,
+    )
+    if (!allowed) {
+      try {
+        unlinkSync(file.path)
+      } catch {
+        /* empty */
+      }
+      throw new BadRequestException('Only JPEG, PNG, GIF, or WebP images are allowed')
+    }
+    return { avatarUrl: `/api/uploads/avatars/${file.filename}` as const }
   }
 }
