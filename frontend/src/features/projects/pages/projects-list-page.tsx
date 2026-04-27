@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { fetchOrganizationContext } from '@/features/clients/api'
 import { ApiError } from '@/lib/api/http'
 import { cn } from '@/lib/utils'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, Pin, Search } from 'lucide-react'
 import {
   createProject,
   deleteProject,
@@ -68,14 +68,15 @@ function formatMoney(n: number, currency: string) {
   }).format(n)
 }
 
-type StatusFilter = 'active' | 'archived' | 'all'
+type StatusFilter = 'active' | 'archived'
 
 type RowMenuProps = {
   p: ProjectRecord
+  disabled?: boolean
   onRefresh: () => Promise<void>
 }
 
-function ProjectRowMenu({ p, onRefresh }: RowMenuProps) {
+function ProjectRowMenu({ p, disabled, onRefresh }: RowMenuProps) {
   const [open, setOpen] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -118,7 +119,7 @@ function ProjectRowMenu({ p, onRefresh }: RowMenuProps) {
 
   useOutsideClickMenu(open, () => setOpen(false), buttonWrapRef, menuRef)
 
-  async function run(op: 'pin' | 'dup' | 'arch' | 'del') {
+  async function run(op: 'pin' | 'dup' | 'arch' | 'rest' | 'del') {
     setErr(null)
     setBusy(true)
     try {
@@ -130,7 +131,9 @@ function ProjectRowMenu({ p, onRefresh }: RowMenuProps) {
         f.name = `${f.name} (copy)`
         await createProject(formValuesToCreatePayload(f))
       } else if (op === 'arch') {
-        await updateProject(p.id, { isArchived: true })
+        await updateProject(p.id, { isArchived: true, isPinned: false })
+      } else if (op === 'rest') {
+        await updateProject(p.id, { isArchived: false })
       } else {
         const ok = window.confirm('Delete this project? This may fail if linked time entries exist.')
         if (!ok) {
@@ -159,54 +162,80 @@ function ProjectRowMenu({ p, onRefresh }: RowMenuProps) {
           style={{ top: menuPos.top, left: menuPos.left }}
           role="menu"
         >
-          <button
-            type="button"
-            role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
-            onClick={() => {
-              setOpen(false)
-              navigate(`/projects/${p.id}/edit`)
-            }}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
-            onClick={() => void run('pin')}
-          >
-            {p.isPinned ? 'Unpin' : 'Pin'}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
-            onClick={() => void run('dup')}
-          >
-            Duplicate
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
-            onClick={() => void run('arch')}
-            disabled={p.isArchived}
-          >
-            Archive
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm text-destructive hover:bg-muted/40"
-            onClick={() => void run('del')}
-          >
-            Delete
-          </button>
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
+              onClick={() => {
+                setOpen(false)
+                navigate(`/projects/${p.id}/edit`)
+              }}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
+              onClick={() => void run('pin')}
+            >
+              {p.isPinned ? 'Unpin' : 'Pin'}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
+              onClick={() => void run('dup')}
+            >
+              Duplicate
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
+              onClick={() => void run('arch')}
+            >
+              Archive
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="w-full px-3 py-2 text-left text-sm text-destructive hover:bg-muted/40"
+              onClick={() => void run('del')}
+            >
+              Delete
+            </button>
+          </>
         </div>,
         document.body,
       )
     ) : null
+
+  if (p.isArchived) {
+    return (
+      <div className="flex flex-col items-end">
+        {err ? (
+          <p
+            className="mb-0.5 max-w-[12rem] text-right text-xs text-destructive"
+            role="alert"
+          >
+            {err}
+          </p>
+        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 min-w-[6.5rem] border-border bg-white text-[13px] font-normal disabled:cursor-not-allowed disabled:bg-muted/20 disabled:text-muted-foreground disabled:opacity-70"
+          disabled={busy || disabled}
+          onClick={() => void run('rest')}
+        >
+          Restore
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col items-end">
@@ -223,8 +252,8 @@ function ProjectRowMenu({ p, onRefresh }: RowMenuProps) {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 min-w-[6.5rem] gap-1 border-border text-[13px] font-normal"
-          disabled={busy}
+          className="h-8 min-w-[6.5rem] gap-1 border-border bg-white text-[13px] font-normal disabled:cursor-not-allowed disabled:bg-muted/20 disabled:text-muted-foreground disabled:opacity-70"
+          disabled={busy || disabled}
           onClick={() => setOpen((v) => !v)}
           aria-haspopup
           aria-expanded={open}
@@ -243,6 +272,7 @@ function ProjectRowMenu({ p, onRefresh }: RowMenuProps) {
 type BulkProjectsToolbarProps = {
   count: number
   selectedIds: string[]
+  status: StatusFilter
   onClearSelection: () => void
   onRefresh: () => Promise<void>
 }
@@ -253,6 +283,7 @@ type BulkProjectsToolbarProps = {
 function BulkProjectsToolbar({
   count,
   selectedIds,
+  status,
   onClearSelection,
   onRefresh,
 }: BulkProjectsToolbarProps) {
@@ -305,7 +336,7 @@ function BulkProjectsToolbar({
     setBusy(true)
     try {
       await Promise.all(
-        selectedIds.map((id) => updateProject(id, { isArchived: true })),
+        selectedIds.map((id) => updateProject(id, { isArchived: true, isPinned: false })),
       )
       setOpen(false)
       await qc.invalidateQueries({ queryKey: qk.projects })
@@ -346,6 +377,25 @@ function BulkProjectsToolbar({
     }
   }
 
+  async function bulkRestore() {
+    setErr(null)
+    setBusy(true)
+    try {
+      await Promise.all(
+        selectedIds.map((id) => updateProject(id, { isArchived: false })),
+      )
+      setOpen(false)
+      await qc.invalidateQueries({ queryKey: qk.projects })
+      await onRefresh()
+      onClearSelection()
+    } catch (e) {
+      if (e instanceof ApiError) setErr(e.message)
+      else setErr('Bulk restore failed. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const menu =
     open && typeof document !== 'undefined' ? (
       createPortal(
@@ -355,24 +405,38 @@ function BulkProjectsToolbar({
           style={{ top: menuPos.top, left: menuPos.left }}
           role="menu"
         >
-          <button
-            type="button"
-            role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
-            disabled={busy}
-            onClick={() => void bulkArchive()}
-          >
-            Archive selected projects
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-neutral-900 hover:text-white"
-            disabled={busy}
-            onClick={() => void bulkDelete()}
-          >
-            Delete selected projects
-          </button>
+          {status === 'archived' ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
+              disabled={busy}
+              onClick={() => void bulkRestore()}
+            >
+              Restore selected projects
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted/40"
+                disabled={busy}
+                onClick={() => void bulkArchive()}
+              >
+                Archive selected projects
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-neutral-900 hover:text-white"
+                disabled={busy}
+                onClick={() => void bulkDelete()}
+              >
+                Delete selected projects
+              </button>
+            </>
+          )}
         </div>,
         document.body,
       )
@@ -385,7 +449,7 @@ function BulkProjectsToolbar({
           type="button"
           variant="outline"
           size="sm"
-          className="h-9 min-w-[6.5rem] gap-1 border-border text-[13px] font-normal"
+          className="h-9 min-w-[6.5rem] gap-1 border-border bg-white text-[13px] font-normal disabled:cursor-not-allowed disabled:bg-muted/20 disabled:text-muted-foreground disabled:opacity-70"
           disabled={busy}
           onClick={() => setOpen((v) => !v)}
           aria-haspopup
@@ -462,6 +526,11 @@ export function ProjectsListPage() {
     [items],
   )
 
+  const archivedCount = useMemo(
+    () => items.filter((p) => p.isArchived).length,
+    [items],
+  )
+
   const clientsInList = useMemo(() => {
     const m = new Map<string, string>()
     for (const p of items) m.set(p.clientId, p.clientName)
@@ -470,23 +539,42 @@ export function ProjectsListPage() {
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [items])
 
-  const byClient = useMemo(() => {
-    const m = new Map<string, ProjectRecord[]>()
-    const sorted = [...filtered].sort((a, b) => {
-      const c = a.clientName.localeCompare(b.clientName)
-      if (c !== 0) return c
-      return a.name.localeCompare(b.name)
-    })
-    for (const p of sorted) {
+  /**
+   * 同 client 若同时有 pin / 非 pin：分两段显示（先全局各 client 的 pinned，再各 client 的未 pin），
+   * 与 Harvest 行为一致；段内按项目名排序。
+   */
+  const projectTableSections = useMemo(() => {
+    const groups = new Map<string, ProjectRecord[]>()
+    for (const p of filtered) {
       const k = p.clientName
-      const arr = m.get(k) ?? []
+      const arr = groups.get(k) ?? []
       arr.push(p)
-      m.set(k, arr)
+      groups.set(k, arr)
     }
-    return m
+    const clientNames = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b))
+
+    const sections: { key: string; clientName: string; rows: ProjectRecord[] }[] = []
+    for (const cname of clientNames) {
+      const pinned = (groups.get(cname) ?? [])
+        .filter((p) => p.isPinned)
+        .sort((a, b) => a.name.localeCompare(b.name))
+      if (pinned.length > 0) {
+        sections.push({ key: `${cname}::pinned`, clientName: cname, rows: pinned })
+      }
+    }
+    for (const cname of clientNames) {
+      const unpinned = (groups.get(cname) ?? [])
+        .filter((p) => !p.isPinned)
+        .sort((a, b) => a.name.localeCompare(b.name))
+      if (unpinned.length > 0) {
+        sections.push({ key: `${cname}::unpinned`, clientName: cname, rows: unpinned })
+      }
+    }
+    return sections
   }, [filtered])
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const hasSelection = selected.size > 0
   function toggle(id: string) {
     setSelected((s) => {
       const n = new Set(s)
@@ -552,7 +640,8 @@ export function ProjectsListPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search by project or client"
-          className="h-10 w-full rounded-md border border-border bg-white pl-9 pr-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none"
+          disabled={hasSelection}
+          className="h-10 w-full rounded-md border border-border bg-white pl-9 pr-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none disabled:cursor-not-allowed disabled:bg-muted/20 disabled:text-muted-foreground disabled:opacity-70"
         />
       </div>
 
@@ -563,6 +652,7 @@ export function ProjectsListPage() {
               <BulkProjectsToolbar
                 count={selected.size}
                 selectedIds={Array.from(selected)}
+                status={status}
                 onClearSelection={() => setSelected(new Set())}
                 onRefresh={refresh}
               />
@@ -576,11 +666,11 @@ export function ProjectsListPage() {
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as StatusFilter)}
-              className="h-9 rounded-md border border-border bg-white px-2 text-sm"
+              disabled={hasSelection}
+              className="h-9 rounded-md border border-border bg-white px-2 text-sm disabled:cursor-not-allowed disabled:bg-muted/20 disabled:text-muted-foreground disabled:opacity-70"
             >
               <option value="active">Active projects ({activeCount})</option>
-              <option value="archived">Archived</option>
-              <option value="all">All</option>
+              <option value="archived">Archived ({archivedCount})</option>
             </select>
           </div>
         </div>
@@ -588,7 +678,8 @@ export function ProjectsListPage() {
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
-            className="h-9 max-w-xs rounded-md border border-border bg-white px-2 text-sm"
+            disabled={hasSelection}
+            className="h-9 max-w-xs rounded-md border border-border bg-white px-2 text-sm disabled:cursor-not-allowed disabled:bg-muted/20 disabled:text-muted-foreground disabled:opacity-70"
           >
             <option value="">Filter by client</option>
             {clientsInList.map((c) => (
@@ -645,11 +736,11 @@ export function ProjectsListPage() {
               </tr>
             </thead>
             <tbody>
-              {Array.from(byClient.entries()).map(([cname, rows]) => (
-                <Fragment key={cname}>
+              {projectTableSections.map(({ key, clientName, rows }) => (
+                <Fragment key={key}>
                   <tr className="bg-muted/20">
                     <td colSpan={7} className="px-2 py-1.5 text-xs font-bold text-foreground">
-                      {cname}
+                      {clientName}
                     </td>
                   </tr>
                   {rows.map((p) => {
@@ -677,15 +768,18 @@ export function ProjectsListPage() {
                         </td>
                         <td className="p-2">
                           <div className="flex flex-wrap items-baseline gap-2">
-                            <span className="font-medium text-foreground">
-                              {p.name}
+                            <span className="inline-flex items-baseline gap-1.5 font-medium text-foreground">
+                              {p.isPinned ? (
+                                <Pin
+                                  className="size-3.5 shrink-0 text-primary"
+                                  aria-label="Pinned"
+                                />
+                              ) : null}
+                              {p.code ? `[${p.code}] ${p.name}` : p.name}
                             </span>
                             <span className="inline-flex rounded border border-border bg-white px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
                               {label}
                             </span>
-                            {p.isPinned ? (
-                              <span className="text-xs text-primary">Pinned</span>
-                            ) : null}
                           </div>
                         </td>
                         <td className="p-2 text-right text-sm tabular-nums text-foreground">
@@ -702,7 +796,11 @@ export function ProjectsListPage() {
                           {formatMoney(p.costsAmount ?? 0, currency)}
                         </td>
                         <td className="p-2 text-right">
-                          <ProjectRowMenu p={p} onRefresh={refresh} />
+                          <ProjectRowMenu
+                            p={p}
+                            disabled={hasSelection}
+                            onRefresh={refresh}
+                          />
                         </td>
                       </tr>
                     );
