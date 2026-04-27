@@ -615,7 +615,9 @@ export class ProjectsService {
     }
     if (dto.invoiceSecondTaxPercent !== undefined) {
       const enabled =
-        dto.invoiceSecondTaxEnabled ?? existing.invoiceSecondTaxEnabled
+        dto.invoiceSecondTaxEnabled ??
+        (existing as { invoiceSecondTaxEnabled?: boolean }).invoiceSecondTaxEnabled ??
+        false
       u.invoiceSecondTaxPercent = enabled
         ? toDecimal(dto.invoiceSecondTaxPercent) ?? null
         : null

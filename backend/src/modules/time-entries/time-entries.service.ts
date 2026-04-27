@@ -5,14 +5,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { PrismaService } from '../../prisma/prisma.service'
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator'
 import type { ActiveMembership } from '../organization/organization-context.service'
 import { CreateTimeEntryDto } from './dto/create-time-entry.dto'
 import { ListTimeEntriesQueryDto } from './dto/list-time-entries.query.dto'
 import { UpdateTimeEntryDto } from './dto/update-time-entry.dto'
+import { CopyFromRecentDayDto } from './dto/copy-from-recent-day.dto'
 import { SubmitWeekDto } from './dto/submit-week.dto'
+import { StartTimeEntryTimerDto } from './dto/start-time-entry-timer.dto'
 
 function toDecimal(n: number): Prisma.Decimal {
   return new Prisma.Decimal(n)
@@ -59,6 +61,14 @@ function addUtcDays(d: Date, n: number): Date {
   )
 }
 
+/**
+ * ISO 周右边界（不含）：次周周一 00:00:00.000Z，与 list 的 toExclusive 一致。
+ * 存库用此值作为 periodEnd，避免与「周日 0:00」混成「周起点」；亦等价于「周日下午 23:59:59.999」的下一秒。
+ */
+function isoWeekExclusiveEndUtc(weekMonday: Date): Date {
+  return addUtcDays(weekMonday, 7)
+}
+
 function toYmd(d: Date): string {
   const y = d.getUTCFullYear()
   const m = String(d.getUTCMonth() + 1).padStart(2, '0')
@@ -66,10 +76,38 @@ function toYmd(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+/**
+ * 与某「日历月」有交集的 ISO 周（以周一为起点），按时间升序。
+ * `anchorInMonth` 取目标周一即所在月的周序对应关系（与表头周一致）。
+ */
+function isoWeekMondaysOverlappingCalendarMonthUtc(anchorInMonth: Date): Date[] {
+  const y = anchorInMonth.getUTCFullYear()
+  const m = anchorInMonth.getUTCMonth()
+  const monthStart = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0))
+  const monthEndEx = new Date(Date.UTC(y, m + 1, 1, 0, 0, 0, 0))
+  let w = startOfIsoWeekFromUtcDate(monthStart)
+  const out: Date[] = []
+  while (w.getTime() < monthEndEx.getTime()) {
+    const wEnd = addUtcDays(w, 7)
+    if (wEnd.getTime() > monthStart.getTime() && w.getTime() < monthEndEx.getTime()) {
+      out.push(new Date(w.getTime()))
+    }
+    w = addUtcDays(w, 7)
+  }
+  return out
+}
+
+type TimeEntrySerializeInput = Prisma.TimeEntryGetPayload<{
+  include: {
+    project: { select: { name: true, client: { select: { id: true, name: true } } } }
+    projectTask: { include: { task: { select: { name: true } } } }
+  }
+}>
+
 function monthRangeUtc(ym: string): { from: Date; toExclusive: Date } {
   const [y, m] = ym.split('-').map((p) => parseInt(p, 10))
   if (Number.isNaN(y) || m < 1 || m > 12) {
-    throw new BadRequestException('月份格式应为 YYYY-MM 且月有效')
+    throw new BadRequestException('Month must be in YYYY-MM format.')
   }
   const monthIndex = m - 1
   return {
@@ -82,8 +120,68 @@ function monthRangeUtc(ym: string): { from: Date; toExclusive: Date } {
 export class TimeEntriesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** 某用户在某组织、某自然日已填报工时合计（可排除一条，用于更新前校验） */
+  private async sumHoursForUserOrgDay(
+    db: Pick<PrismaClient, 'timeEntry'>,
+    userId: string,
+    orgId: string,
+    spentDate: Date,
+    excludeEntryId?: string,
+  ): Promise<number> {
+    const agg = await db.timeEntry.aggregate({
+      where: {
+        userId,
+        spentDate,
+        project: { organizationId: orgId },
+        ...(excludeEntryId ? { NOT: { id: excludeEntryId } } : {}),
+      },
+      _sum: { hours: true },
+    })
+    return decToNumber(agg._sum.hours)
+  }
+
   private isElevatedRole(role: string): boolean {
     return role === 'ADMINISTRATOR' || role === 'MANAGER'
+  }
+
+  /**
+   * 仅按 `approvals` 表、日期段筛选：与 ISO 周 spentDate 区间 [周一 0:00, 次周一 0:00) 重叠的「填报窗口」
+   * periodStart <= 该周周一，且 periodEnd 不早于该周周日 0:00（与 toExclusive/次周一 0:00 的两种存法兼容，见历史迁移）
+   * orderBy: 最「紧」的 periodStart 优先
+   */
+  private findAnyApprovalWindowCoveringIsoWeek(userId: string, from: Date, weekLastDayStart: Date) {
+    return this.prisma.approval.findFirst({
+      where: {
+        submitterId: userId,
+        periodStart: { lte: from },
+        periodEnd: { gte: weekLastDayStart },
+      },
+      orderBy: [{ periodStart: 'desc' }, { id: 'desc' }],
+    })
+  }
+
+  /**
+   * Timesheet 列表/撤回/计时器：以 approvals 为准。
+   * 若**存在**覆盖本 ISO 周且 status=APPROVED 的行 → 只读/Withdraw；否则再取 PENDING/其它（用于 Resubmit/展示周期）。
+   */
+  private async findWeekApprovalForTimesheetUi(
+    userId: string,
+    from: Date,
+    weekLastDayStart: Date,
+  ) {
+    const approved = await this.prisma.approval.findFirst({
+      where: {
+        submitterId: userId,
+        status: 'APPROVED',
+        periodStart: { lte: from },
+        periodEnd: { gte: weekLastDayStart },
+      },
+      orderBy: [{ periodStart: 'desc' }, { id: 'desc' }],
+    })
+    if (approved) {
+      return approved
+    }
+    return this.findAnyApprovalWindowCoveringIsoWeek(userId, from, weekLastDayStart)
   }
 
   private resolveTargetUserId(
@@ -93,7 +191,7 @@ export class TimeEntriesService {
   ): string {
     if (forUser && forUser !== selfId) {
       if (!this.isElevatedRole(m.systemRole)) {
-        throw new ForbiddenException('仅管理员或经理可查看他人工时')
+        throw new ForbiddenException('Only administrators or managers can view other users’ time entries.')
       }
       return forUser
     }
@@ -157,11 +255,64 @@ export class TimeEntriesService {
     }
   }
 
+  /**
+   * Track time 弹窗：从 `projects` 表查询（经 clientId 关联 client），
+   * 并包含各项目下未归档的 project_tasks → task。权限与 assignable-rows 一致。
+   */
+  async listTrackTimeOptions(membership: ActiveMembership, user: CurrentUserPayload) {
+    const orgId = membership.organizationId
+    const elevated = this.isElevatedRole(membership.systemRole)
+
+    const where: Prisma.ProjectWhereInput = {
+      isArchived: false,
+      organizationId: orgId,
+      projectTasks: {
+        some: {
+          task: { isArchived: false },
+        },
+      },
+      ...(elevated
+        ? {}
+        : { assignments: { some: { userId: user.userId } } }),
+    }
+
+    const projects = await this.prisma.project.findMany({
+      where,
+      orderBy: [{ client: { name: 'asc' } }, { name: 'asc' }],
+      include: {
+        client: { select: { id: true, name: true } },
+        projectTasks: {
+          where: { task: { isArchived: false } },
+          orderBy: { task: { name: 'asc' } },
+          include: {
+            task: { select: { id: true, name: true } },
+          },
+        },
+      },
+    })
+
+    return {
+      projects: projects
+        .filter((p) => p.projectTasks.length > 0)
+        .map((p) => ({
+          projectId: p.id,
+          name: p.name,
+          clientId: p.clientId,
+          clientName: p.client.name,
+          tasks: p.projectTasks.map((pt) => ({
+            projectTaskId: pt.id,
+            taskId: pt.taskId,
+            taskName: pt.task.name,
+          })),
+        })),
+    }
+  }
+
   private parseRange(
     q: ListTimeEntriesQueryDto,
   ): { from: Date; toExclusive: Date; mode: 'week' | 'month' } {
     if (q.week && q.month) {
-      throw new BadRequestException('请只指定 week 或 month 之一')
+      throw new BadRequestException('Please specify only one of: week or month.')
     }
     if (q.week) {
       const ref = utcDayStart(q.week)
@@ -206,28 +357,12 @@ export class TimeEntriesService {
       include: { project: true, task: true },
     })
     if (!row || row.project.isArchived) {
-      throw new NotFoundException('未找到项目任务或已归档')
+      throw new NotFoundException('Project task not found or archived.')
     }
     return row
   }
 
-  private serializeEntry(
-    e: {
-      id: string
-      userId: string
-      projectId: string
-      projectTaskId: string
-      spentDate: Date
-      hours: Prisma.Decimal
-      notes: string | null
-      status: string
-      isLocked: boolean
-      createdAt: Date
-      updatedAt: Date
-      project: { name: string; client: { id: string; name: string } }
-      projectTask: { task: { name: string } }
-    },
-  ) {
+  private serializeEntry(e: TimeEntrySerializeInput) {
     return {
       id: e.id,
       userId: e.userId,
@@ -242,7 +377,8 @@ export class TimeEntriesService {
       hours: decToNumber(e.hours),
       notes: e.notes ?? null,
       status: e.status,
-      isLocked: e.isLocked,
+      // 仅「已批准」锁定；已提交待审批 (SUBMITTED) 可继续增改，前端依此置灰/解锁。
+      isLocked: e.status === 'APPROVED',
       createdAt: e.createdAt.toISOString(),
       updatedAt: e.updatedAt.toISOString(),
     }
@@ -262,9 +398,13 @@ export class TimeEntriesService {
         where: { userId: targetUserId, organizationId: orgId, status: 'ACTIVE' },
       })
       if (!member) {
-        throw new BadRequestException('该用户非本组织成员')
+        throw new BadRequestException('The specified user is not an active member of this organization.')
       }
     }
+
+    const weekLastDayStart = addUtcDays(from, 6)
+    const weekWindow =
+      mode === 'week' ? await this.findWeekApprovalForTimesheetUi(targetUserId, from, weekLastDayStart) : null
 
     const items = await this.prisma.timeEntry.findMany({
       where: {
@@ -290,7 +430,276 @@ export class TimeEntriesService {
         toExclusive: toExclusive.toISOString(),
       },
       forUser: targetUserId,
+      weekApproval: weekWindow
+        ? {
+            id: weekWindow.id,
+            status: weekWindow.status,
+            periodStart: weekWindow.periodStart.toISOString(),
+            periodEnd: weekWindow.periodEnd.toISOString(),
+          }
+        : null,
       items: items.map((e) => this.serializeEntry(e)),
+    }
+  }
+
+  /**
+   * 在目标自然日 `date`（UTC 日界）**之前**、**最近一次有工时的那一整天**，复制到 `date` 当天（新建行）。
+   * 例：今天周三，在周一填过工时时，将「离周三最近、且已有记录的那一天」（通常周一）的条目复制到本周三。
+   */
+  async copyFromMostRecentDay(
+    membership: ActiveMembership,
+    user: CurrentUserPayload,
+    body: CopyFromRecentDayDto,
+  ) {
+    const orgId = membership.organizationId
+    const elevated = this.isElevatedRole(membership.systemRole)
+    const targetFrom = utcDayStart(body.date)
+    const mon = startOfIsoWeekFromUtcDate(targetFrom)
+    const weekLastDayStart = addUtcDays(mon, 6)
+
+    const wk = await this.findWeekApprovalForTimesheetUi(
+      user.userId,
+      mon,
+      weekLastDayStart,
+    )
+    if (wk?.status === 'APPROVED') {
+      throw new BadRequestException('This week is approved and cannot be modified or copied into.')
+    }
+
+    const maxRow = await this.prisma.timeEntry.aggregate({
+      where: {
+        userId: user.userId,
+        project: { organizationId: orgId },
+        spentDate: { lt: targetFrom },
+      },
+      _max: { spentDate: true },
+    })
+    if (!maxRow._max.spentDate) {
+      return {
+        copied: 0,
+        skipped: 0,
+        sourceDate: null as string | null,
+        targetDate: targetFrom.toISOString(),
+        message: 'No earlier day with time entries was found to copy from.',
+      }
+    }
+
+    const src = maxRow._max.spentDate
+    const sourceFrom = new Date(
+      Date.UTC(
+        src.getUTCFullYear(),
+        src.getUTCMonth(),
+        src.getUTCDate(),
+        0,
+        0,
+        0,
+        0,
+      ),
+    )
+    if (sourceFrom.getTime() >= targetFrom.getTime()) {
+      return {
+        copied: 0,
+        skipped: 0,
+        sourceDate: null,
+        targetDate: targetFrom.toISOString(),
+        message: 'No earlier day with time entries was found to copy from.',
+      }
+    }
+
+    const sourceToEx = addUtcDays(sourceFrom, 1)
+    const sourceEntries = await this.prisma.timeEntry.findMany({
+      where: {
+        userId: user.userId,
+        project: { organizationId: orgId },
+        spentDate: { gte: sourceFrom, lt: sourceToEx },
+      },
+      orderBy: [{ spentDate: 'asc' }, { id: 'asc' }],
+    })
+    if (sourceEntries.length === 0) {
+      return {
+        copied: 0,
+        skipped: 0,
+        sourceDate: sourceFrom.toISOString(),
+        targetDate: targetFrom.toISOString(),
+        message: 'No valid entries were found on the source day.',
+      }
+    }
+
+    let copied = 0
+    let skipped = 0
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const se of sourceEntries) {
+        const h = decToNumber(se.hours)
+        if (h <= 0) {
+          skipped += 1
+          continue
+        }
+
+        let pt
+        try {
+          pt = await this.getProjectTaskInOrg(orgId, se.projectTaskId)
+        } catch {
+          skipped += 1
+          continue
+        }
+        if (!(await this.canLogTimeOnProject(user.userId, pt.projectId, elevated))) {
+          skipped += 1
+          continue
+        }
+
+        const daySum = await this.sumHoursForUserOrgDay(
+          tx,
+          user.userId,
+          orgId,
+          targetFrom,
+        )
+        if (daySum + h > 24) {
+          skipped += 1
+          continue
+        }
+
+        await tx.timeEntry.create({
+          data: {
+            userId: user.userId,
+            projectId: pt.projectId,
+            projectTaskId: se.projectTaskId,
+            spentDate: targetFrom,
+            hours: se.hours,
+            notes: se.notes,
+          },
+        })
+        copied += 1
+      }
+    })
+
+    return {
+      copied,
+      skipped,
+      sourceDate: sourceFrom.toISOString(),
+      targetDate: targetFrom.toISOString(),
+    }
+  }
+
+  /**
+   * 以目标周 `weekOf` 所在**自然月**内 ISO 周序为基准：将「本月中上一周」整周条目按星期对齐复制到目标周（新建行）。
+   * 若目标已是该月内第一周，则来源为上一自然 ISO 周（周一起算）。
+   * 与 copy-from-recent-day 区分：本接口按整周、且来源由月内周序决定。
+   */
+  async copyFromPreviousWeekInMonth(
+    membership: ActiveMembership,
+    user: CurrentUserPayload,
+    body: SubmitWeekDto,
+  ) {
+    const orgId = membership.organizationId
+    const elevated = this.isElevatedRole(membership.systemRole)
+    const dayOf = utcDayStart(body.weekOf)
+    const targetFrom = startOfIsoWeekFromUtcDate(dayOf)
+    const weekLastDayStart = addUtcDays(targetFrom, 6)
+
+    const wk = await this.findWeekApprovalForTimesheetUi(
+      user.userId,
+      targetFrom,
+      weekLastDayStart,
+    )
+    if (wk?.status === 'APPROVED') {
+      throw new BadRequestException('This week is approved and cannot be modified or copied into.')
+    }
+
+    const mondays = isoWeekMondaysOverlappingCalendarMonthUtc(targetFrom)
+    const tYmd = toYmd(targetFrom)
+    const idx = mondays.findIndex((d) => toYmd(d) === tYmd)
+    const sourceFrom =
+      idx > 0
+        ? new Date(mondays[idx - 1]!.getTime())
+        : addUtcDays(targetFrom, -7)
+    const sourceToEx = addUtcDays(sourceFrom, 7)
+
+    const sourceEntries = await this.prisma.timeEntry.findMany({
+      where: {
+        userId: user.userId,
+        project: { organizationId: orgId },
+        spentDate: { gte: sourceFrom, lt: sourceToEx },
+      },
+      orderBy: [{ spentDate: 'asc' }, { id: 'asc' }],
+    })
+
+    const hasPositive = sourceEntries.some((e) => decToNumber(e.hours) > 0)
+    if (!hasPositive) {
+      return {
+        copied: 0,
+        skipped: 0,
+        sourceWeekFrom: sourceFrom.toISOString(),
+        targetWeekFrom: targetFrom.toISOString(),
+        message: 'No time entries were found in the source week to copy.',
+      }
+    }
+
+    const targetToEx = addUtcDays(targetFrom, 7)
+    const msPerDay = 24 * 60 * 60 * 1000
+
+    let copied = 0
+    let skipped = 0
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const se of sourceEntries) {
+        const h = decToNumber(se.hours)
+        if (h <= 0) {
+          skipped += 1
+          continue
+        }
+        if (se.spentDate < sourceFrom || se.spentDate >= sourceToEx) {
+          skipped += 1
+          continue
+        }
+        const offsetDays = Math.round((se.spentDate.getTime() - sourceFrom.getTime()) / msPerDay)
+        if (offsetDays < 0 || offsetDays > 6) {
+          skipped += 1
+          continue
+        }
+        const newSpent = addUtcDays(targetFrom, offsetDays)
+        if (newSpent.getTime() < targetFrom.getTime() || newSpent.getTime() >= targetToEx.getTime()) {
+          skipped += 1
+          continue
+        }
+
+        let pt
+        try {
+          pt = await this.getProjectTaskInOrg(orgId, se.projectTaskId)
+        } catch {
+          skipped += 1
+          continue
+        }
+        if (!(await this.canLogTimeOnProject(user.userId, pt.projectId, elevated))) {
+          skipped += 1
+          continue
+        }
+
+        const daySum = await this.sumHoursForUserOrgDay(tx, user.userId, orgId, newSpent)
+        if (daySum + h > 24) {
+          skipped += 1
+          continue
+        }
+
+        await tx.timeEntry.create({
+          data: {
+            userId: user.userId,
+            projectId: pt.projectId,
+            projectTaskId: se.projectTaskId,
+            spentDate: newSpent,
+            hours: se.hours,
+            notes: se.notes,
+          },
+        })
+        copied += 1
+      }
+    })
+
+    return {
+      copied,
+      skipped,
+      sourceWeekFrom: sourceFrom.toISOString(),
+      targetWeekFrom: targetFrom.toISOString(),
     }
   }
 
@@ -304,59 +713,29 @@ export class TimeEntriesService {
     const dayStart = utcDayStart(body.date)
     const pt = await this.getProjectTaskInOrg(orgId, body.projectTaskId)
     if (!(await this.canLogTimeOnProject(user.userId, pt.projectId, elevated))) {
-      throw new ForbiddenException('您未被分配该项目，不能填报工时')
+      throw new ForbiddenException('You are not assigned to this project.')
     }
 
-    if (body.hours === 0) {
-      const found = await this.prisma.timeEntry.findUnique({
-        where: {
-          userId_projectTaskId_spentDate: {
-            userId: user.userId,
-            projectTaskId: body.projectTaskId,
-            spentDate: dayStart,
-          },
-        },
-      })
-      if (!found) {
-        return { action: 'noop' as const, removed: false as const }
-      }
-      if (found.isLocked) {
-        throw new ConflictException('该工时已锁定，无法删除或清空')
-      }
-      await this.prisma.timeEntry.delete({ where: { id: found.id } })
-      return { action: 'deleted' as const, removed: true as const, id: found.id }
+    if (body.hours <= 0) {
+      throw new BadRequestException('Hours must be greater than 0.')
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      const row = await tx.timeEntry.findUnique({
-        where: {
-          userId_projectTaskId_spentDate: {
-            userId: user.userId,
-            projectTaskId: body.projectTaskId,
-            spentDate: dayStart,
-          },
-        },
-      })
-      if (row?.isLocked) {
-        throw new ConflictException('该工时已锁定，不能修改')
+      const daySum = await this.sumHoursForUserOrgDay(
+        tx,
+        user.userId,
+        orgId,
+        dayStart,
+      )
+      if (daySum + body.hours > 24) {
+        throw new BadRequestException('Total hours for a single day must not exceed 24.')
       }
-      const saved = await tx.timeEntry.upsert({
-        where: {
-          userId_projectTaskId_spentDate: {
-            userId: user.userId,
-            projectTaskId: body.projectTaskId,
-            spentDate: dayStart,
-          },
-        },
-        create: {
+      return tx.timeEntry.create({
+        data: {
           userId: user.userId,
           projectId: pt.projectId,
           projectTaskId: body.projectTaskId,
           spentDate: dayStart,
-          hours: toDecimal(body.hours),
-          notes: body.notes ?? null,
-        },
-        update: {
           hours: toDecimal(body.hours),
           notes: body.notes ?? null,
         },
@@ -370,9 +749,8 @@ export class TimeEntriesService {
           projectTask: { include: { task: { select: { name: true } } } },
         },
       })
-      return saved
     })
-    return { action: 'saved' as const, item: this.serializeEntry(result) }
+    return { action: 'saved' as const, item: this.serializeEntry(result as TimeEntrySerializeInput) }
   }
 
   async update(
@@ -382,7 +760,7 @@ export class TimeEntriesService {
     body: UpdateTimeEntryDto,
   ) {
     if (body.hours === undefined && body.notes === undefined) {
-      throw new BadRequestException('无更新字段')
+      throw new BadRequestException('No fields provided to update.')
     }
     const orgId = membership.organizationId
     const row = await this.prisma.timeEntry.findFirst({
@@ -398,14 +776,26 @@ export class TimeEntriesService {
       },
     })
     if (!row) {
-      throw new NotFoundException('未找到记录')
+      throw new NotFoundException('Time entry not found.')
     }
-    if (row.isLocked) {
-      throw new ConflictException('已锁定，无法编辑')
+    if (row.status === 'APPROVED') {
+      throw new ConflictException('This entry is approved and cannot be edited.')
     }
     if (body.hours !== undefined && body.hours === 0) {
       await this.prisma.timeEntry.delete({ where: { id } })
       return { action: 'deleted' as const, id }
+    }
+    if (body.hours !== undefined) {
+      const others = await this.sumHoursForUserOrgDay(
+        this.prisma,
+        row.userId,
+        orgId,
+        row.spentDate,
+        id,
+      )
+      if (others + body.hours > 24) {
+        throw new BadRequestException('Total hours for a single day must not exceed 24.')
+      }
     }
     const u = await this.prisma.timeEntry.update({
       where: { id },
@@ -436,10 +826,10 @@ export class TimeEntriesService {
       where: { id, userId: user.userId, project: { organizationId: orgId } },
     })
     if (!row) {
-      throw new NotFoundException('未找到记录')
+      throw new NotFoundException('Time entry not found.')
     }
-    if (row.isLocked) {
-      throw new ConflictException('已锁定，无法删除')
+    if (row.status === 'APPROVED') {
+      throw new ConflictException('This entry is approved and cannot be deleted.')
     }
     await this.prisma.timeEntry.delete({ where: { id } })
   }
@@ -452,18 +842,59 @@ export class TimeEntriesService {
     const dayStart = utcDayStart(body.weekOf)
     const from = startOfIsoWeekFromUtcDate(dayStart)
     const toExclusive = addUtcDays(from, 7)
+    const weekLastDayStart = addUtcDays(from, 6)
     const orgId = membership.organizationId
+
+    let window = await this.findAnyApprovalWindowCoveringIsoWeek(user.userId, from, weekLastDayStart)
+    if (!window) {
+      window = await this.prisma.approval.create({
+        data: {
+          submitterId: user.userId,
+          status: 'PENDING',
+          periodStart: from,
+          periodEnd: isoWeekExclusiveEndUtc(from),
+        },
+      })
+    } else if (window.status === 'WITHDRAWN' || window.status === 'REJECTED') {
+      const periodEnd = isoWeekExclusiveEndUtc(from)
+      await this.prisma.approval.update({
+        where: { id: window.id },
+        data: { status: 'PENDING', periodEnd },
+      })
+      window = { ...window, status: 'PENDING', periodEnd }
+    }
+    if (window.status === 'APPROVED') {
+      throw new BadRequestException(
+        'This approval period is already approved; this week cannot be submitted again.',
+      )
+    }
+
+    const outOfWindow = await this.prisma.timeEntry.findFirst({
+      where: {
+        userId: user.userId,
+        project: { organizationId: orgId },
+        spentDate: { gte: from, lt: toExclusive },
+        OR: [{ spentDate: { lt: window.periodStart } }, { spentDate: { gt: window.periodEnd } }],
+      },
+      select: { id: true },
+    })
+    if (outOfWindow) {
+      throw new BadRequestException(
+        'Some time entries in this week fall outside the current approval period (periodStart–periodEnd). Please adjust dates and try again.',
+      )
+    }
 
     const r = await this.prisma.timeEntry.updateMany({
       where: {
         userId: user.userId,
-        isLocked: false,
         project: { organizationId: orgId },
         spentDate: { gte: from, lt: toExclusive },
+        status: { not: 'APPROVED' },
       },
       data: {
-        isLocked: true,
         status: 'SUBMITTED',
+        isLocked: false,
+        approvalId: window.id,
       },
     })
     return { lockedCount: r.count, weekFrom: from.toISOString(), toExclusive: toExclusive.toISOString() }
@@ -479,25 +910,198 @@ export class TimeEntriesService {
     body: SubmitWeekDto,
   ) {
     if (!this.isElevatedRole(membership.systemRole)) {
-      throw new ForbiddenException('仅管理员或经理可撤回已提交/已批准的工时周')
+      throw new ForbiddenException('Only administrators or managers can withdraw a submitted/approved week.')
     }
     const dayStart = utcDayStart(body.weekOf)
     const from = startOfIsoWeekFromUtcDate(dayStart)
     const toExclusive = addUtcDays(from, 7)
+    const weekLastDayStart = addUtcDays(from, 6)
     const orgId = membership.organizationId
     const r = await this.prisma.timeEntry.updateMany({
       where: {
         userId: user.userId,
-        isLocked: true,
         project: { organizationId: orgId },
         spentDate: { gte: from, lt: toExclusive },
+        status: { in: ['SUBMITTED', 'APPROVED'] },
       },
       data: {
         isLocked: false,
         status: 'UNSUBMITTED',
+        approvalId: null,
       },
     })
+    const win = await this.findWeekApprovalForTimesheetUi(user.userId, from, weekLastDayStart)
+    if (win) {
+      await this.prisma.approval.update({
+        where: { id: win.id },
+        data: { status: 'WITHDRAWN' },
+      })
+    }
     return { unlockedCount: r.count, weekFrom: from.toISOString(), toExclusive: toExclusive.toISOString() }
+  }
+
+  async getActiveTimer(membership: ActiveMembership, user: CurrentUserPayload) {
+    const orgId = membership.organizationId
+    const t = await this.prisma.timeEntryTimer.findFirst({
+      where: {
+        userId: user.userId,
+        status: 'RUNNING',
+        stoppedAt: null,
+        projectTask: { project: { organizationId: orgId } },
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      include: {
+        projectTask: {
+          include: {
+            task: { select: { name: true } },
+            project: { select: { name: true, client: { select: { id: true, name: true } } } },
+          },
+        },
+      },
+    })
+    if (!t) {
+      return { timer: null }
+    }
+    return {
+      timer: {
+        id: t.id,
+        projectTaskId: t.projectTaskId,
+        date: toYmd(t.spentDate),
+        spentDate: t.spentDate.toISOString(),
+        startedAt: t.startedAt.toISOString(),
+        notes: t.notes ?? null,
+        clientName: t.projectTask.project.client.name,
+        projectName: t.projectTask.project.name,
+        taskName: t.projectTask.task.name,
+      },
+    }
+  }
+
+  async startTimer(
+    membership: ActiveMembership,
+    user: CurrentUserPayload,
+    body: StartTimeEntryTimerDto,
+  ) {
+    const orgId = membership.organizationId
+    const elevated = this.isElevatedRole(membership.systemRole)
+    const dayStart = utcDayStart(body.date)
+    const pt = await this.getProjectTaskInOrg(orgId, body.projectTaskId)
+    if (!(await this.canLogTimeOnProject(user.userId, pt.projectId, elevated))) {
+      throw new ForbiddenException('You are not assigned to this project.')
+    }
+
+    // 若该周在 approvals 中已批准，则禁止开始计时（整周只读）
+    const weekMon = startOfIsoWeekFromUtcDate(dayStart)
+    const weekLastDayStart = addUtcDays(weekMon, 6)
+    const w = await this.findWeekApprovalForTimesheetUi(user.userId, weekMon, weekLastDayStart)
+    if (w?.status === 'APPROVED') {
+      throw new ConflictException('This week is approved; you cannot start a timer for it.')
+    }
+
+    const now = new Date()
+    const created = await this.prisma.$transaction(async (tx) => {
+      await tx.timeEntryTimer.updateMany({
+        where: { userId: user.userId, status: 'RUNNING', stoppedAt: null },
+        data: { status: 'STOPPED', stoppedAt: now },
+      })
+      return tx.timeEntryTimer.create({
+        data: {
+          userId: user.userId,
+          projectTaskId: body.projectTaskId,
+          spentDate: dayStart,
+          notes: body.notes ?? null,
+          startedAt: now,
+          status: 'RUNNING',
+        },
+        include: {
+          projectTask: {
+            include: {
+              task: { select: { name: true } },
+              project: { select: { name: true, client: { select: { id: true, name: true } } } },
+            },
+          },
+        },
+      })
+    })
+    return {
+      timer: {
+        id: created.id,
+        projectTaskId: created.projectTaskId,
+        date: toYmd(created.spentDate),
+        spentDate: created.spentDate.toISOString(),
+        startedAt: created.startedAt.toISOString(),
+        notes: created.notes ?? null,
+        clientName: created.projectTask.project.client.name,
+        projectName: created.projectTask.project.name,
+        taskName: created.projectTask.task.name,
+      },
+    }
+  }
+
+  async stopTimer(membership: ActiveMembership, user: CurrentUserPayload, timerId: string) {
+    const orgId = membership.organizationId
+    const now = new Date()
+    const t = await this.prisma.timeEntryTimer.findFirst({
+      where: {
+        id: timerId,
+        userId: user.userId,
+        status: 'RUNNING',
+        stoppedAt: null,
+        projectTask: { project: { organizationId: orgId } },
+      },
+      include: {
+        projectTask: {
+          include: {
+            task: { select: { name: true } },
+            project: { select: { id: true, name: true, client: { select: { id: true, name: true } } } },
+          },
+        },
+      },
+    })
+    if (!t) {
+      throw new NotFoundException('Running timer not found.')
+    }
+
+    const ms = now.getTime() - t.startedAt.getTime()
+    const hours = Math.max(0.01, Math.round((ms / 3600000) * 100) / 100)
+
+    const res = await this.prisma.$transaction(async (tx) => {
+      await tx.timeEntryTimer.update({
+        where: { id: t.id },
+        data: { status: 'STOPPED', stoppedAt: now },
+      })
+      if (ms < 1000) {
+        return { action: 'stopped' as const, item: null }
+      }
+
+      const daySum = await this.sumHoursForUserOrgDay(tx, user.userId, orgId, t.spentDate)
+      if (daySum + hours > 24) {
+        throw new BadRequestException('Total hours for a single day must not exceed 24.')
+      }
+
+      const entry = await tx.timeEntry.create({
+        data: {
+          userId: user.userId,
+          projectId: t.projectTask.project.id,
+          projectTaskId: t.projectTaskId,
+          spentDate: t.spentDate,
+          hours: toDecimal(hours),
+          notes: t.notes ?? null,
+        },
+        include: {
+          project: {
+            select: {
+              name: true,
+              client: { select: { id: true, name: true } },
+            },
+          },
+          projectTask: { include: { task: { select: { name: true } } } },
+        },
+      })
+      return { action: 'stopped' as const, item: this.serializeEntry(entry as TimeEntrySerializeInput) }
+    })
+
+    return res
   }
 
   async approve(
@@ -505,7 +1109,7 @@ export class TimeEntriesService {
     id: string,
   ) {
     if (!this.isElevatedRole(membership.systemRole)) {
-      throw new ForbiddenException('仅管理员或经理可审批')
+      throw new ForbiddenException('Only administrators or managers can approve time entries.')
     }
     const orgId = membership.organizationId
     const row = await this.prisma.timeEntry.findFirst({
@@ -521,17 +1125,17 @@ export class TimeEntriesService {
       },
     })
     if (!row) {
-      throw new NotFoundException('未找到记录')
-    }
-    if (!row.isLocked) {
-      throw new BadRequestException('需先提交锁定后再审批')
+      throw new NotFoundException('Time entry not found.')
     }
     if (row.status === 'APPROVED') {
       return { item: this.serializeEntry(row) }
     }
+    if (row.status !== 'SUBMITTED') {
+      throw new BadRequestException('Only submitted time entries can be approved.')
+    }
     const u = await this.prisma.timeEntry.update({
       where: { id },
-      data: { status: 'APPROVED' },
+      data: { status: 'APPROVED', isLocked: true },
       include: {
         project: {
           select: {
@@ -542,6 +1146,12 @@ export class TimeEntriesService {
         projectTask: { include: { task: { select: { name: true } } } },
       },
     })
+    if (u.approvalId) {
+      await this.prisma.approval.update({
+        where: { id: u.approvalId },
+        data: { status: 'APPROVED' },
+      })
+    }
     return { item: this.serializeEntry(u) }
   }
 }

@@ -59,6 +59,8 @@ type TimesheetCalendarMonthProps = {
   weekTotal: number
   dayLockedByYmd: Record<string, boolean>
   weekAllApproved: boolean
+  /** 与周表可编辑态一致；为 false 时整周不可 + Add / 点条编辑。 */
+  weekGridEditable: boolean
   onAddTime: (dateYmd: string) => void
   onEditEntry: (entry: TimeEntryListItem) => void
 }
@@ -70,6 +72,7 @@ export function TimesheetCalendarMonth({
   weekTotal,
   dayLockedByYmd,
   weekAllApproved,
+  weekGridEditable,
   onAddTime,
   onEditEntry,
 }: TimesheetCalendarMonthProps) {
@@ -151,7 +154,8 @@ export function TimesheetCalendarMonth({
           {dayKeys.map((d) => {
             const dayItems = byDate.get(d) ?? []
             const layouts = layoutEntriesForDay(dayItems)
-            const dLocked = Boolean(dayLockedByYmd[d]) || weekAllApproved
+            const dLocked =
+              !weekGridEditable || weekAllApproved || Boolean(dayLockedByYmd[d])
             const pipelineEnd = dayPipelineEndHour(layouts)
             const remainingH = 24 - pipelineEnd
             const addSlotH = !dLocked && remainingH > 0
@@ -176,12 +180,17 @@ export function TimesheetCalendarMonth({
                   const h = endHour - startHour
                   const topPct = (startHour / HOURS) * 100
                   const hPct = (h / HOURS) * 100
+                  const canEdit = weekGridEditable && !entry.isLocked
                   return (
                     <button
                       key={entry.id}
                       type="button"
+                      disabled={!canEdit}
                       onClick={() => onEditEntry(entry)}
-                      className="absolute left-0.5 right-0.5 z-10 overflow-hidden rounded-sm px-2 py-1.5 text-left text-white shadow-sm transition hover:opacity-95"
+                      className={cn(
+                        'absolute left-0.5 right-0.5 z-10 overflow-hidden rounded-sm px-2 py-1.5 text-left text-white shadow-sm transition',
+                        canEdit ? 'hover:opacity-95' : 'cursor-not-allowed opacity-75',
+                      )}
                       style={{
                         top: `${topPct}%`,
                         height: `${hPct}%`,

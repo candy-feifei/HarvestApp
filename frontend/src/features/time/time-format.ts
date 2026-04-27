@@ -13,6 +13,18 @@ export function formatDecimalHoursAsClock(hours: number | null | undefined): str
 /**
  * 解析 "2:30"、"2" 为小时小数；空 / 无法解析 返回 0
  */
+/** 运行中计时器展示：已运行毫秒数 → H:MM:SS */
+export function formatElapsedMs(elapsedMs: number): string {
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
+    return '0:00:00'
+  }
+  const s = Math.floor(elapsedMs / 1000)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
 export function parseClockToDecimal(input: string): number {
   const t = input.trim()
   if (!t) return 0

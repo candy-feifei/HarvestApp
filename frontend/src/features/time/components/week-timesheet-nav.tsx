@@ -132,7 +132,7 @@ export function WeekTimesheetNav({
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-        <div className="inline-flex h-9 min-w-0 max-w-full items-stretch overflow-hidden rounded-md border border-border bg-white text-sm text-foreground shadow-sm">
+        <div className="inline-flex h-9 w-80 min-w-0 max-w-full shrink-0 items-stretch overflow-hidden rounded-md border border-border bg-white text-sm text-foreground shadow-sm">
           <Button
             type="button"
             variant="ghost"
@@ -155,11 +155,15 @@ export function WeekTimesheetNav({
             <Popover.Trigger asChild>
               <button
                 type="button"
-                className="flex min-w-0 flex-1 items-center gap-2 px-2.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-9 min-w-0 w-0 flex-1 items-center justify-center overflow-hidden px-1.5 text-center transition-colors hover:bg-muted/30 focus-visible:outline focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Select week in calendar"
               >
-                <CalendarIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="min-w-0 font-medium">{rangeLabel}</span>
+                <span className="inline-flex min-w-0 max-w-full items-center justify-center gap-1.5">
+                  <CalendarIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 max-w-full truncate text-center font-medium" title={rangeLabel}>
+                    {rangeLabel}
+                  </span>
+                </span>
               </button>
             </Popover.Trigger>
             <Popover.Portal>

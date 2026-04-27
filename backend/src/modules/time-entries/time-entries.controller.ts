@@ -17,7 +17,9 @@ import { OrganizationContextService } from '../organization/organization-context
 import { CreateTimeEntryDto } from './dto/create-time-entry.dto'
 import { ListTimeEntriesQueryDto } from './dto/list-time-entries.query.dto'
 import { UpdateTimeEntryDto } from './dto/update-time-entry.dto'
+import { CopyFromRecentDayDto } from './dto/copy-from-recent-day.dto'
 import { SubmitWeekDto } from './dto/submit-week.dto'
+import { StartTimeEntryTimerDto } from './dto/start-time-entry-timer.dto'
 import { TimeEntriesService } from './time-entries.service'
 
 @ApiTags('time-entries')
@@ -41,6 +43,22 @@ export class TimeEntriesController {
       xOrganizationId,
     )
     return this.timeEntries.listAssignableRows(membership, user)
+  }
+
+  @Get('track-time-options')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({
+    summary: 'Track time 弹窗：项目（含客户）及项目下任务，一次返回',
+  })
+  async trackTimeOptions(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const membership = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.timeEntries.listTrackTimeOptions(membership, user)
   }
 
   @Get()
@@ -90,6 +108,77 @@ export class TimeEntriesController {
       xOrganizationId,
     )
     return this.timeEntries.withdrawWeek(membership, user, body)
+  }
+
+  @Post('copy-from-recent-day')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({
+    summary:
+      '在目标日 `date` 之前、最近一次有工时的「那一整天」复制到 `date`（按项目任务+工时+备注新建行，受单日 24h 等约束）',
+  })
+  async copyFromRecentDay(
+    @Body() body: CopyFromRecentDayDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const membership = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.timeEntries.copyFromMostRecentDay(membership, user, body)
+  }
+
+  @Post('copy-from-recent-week')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({
+    summary:
+      '以 `weekOf` 所在月内「上一 ISO 周」为来源，将整周条目按星期对齐复制到该周；若该月内已是第一周则来源为上一自然 ISO 周',
+  })
+  async copyFromRecentWeek(
+    @Body() body: SubmitWeekDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const membership = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.timeEntries.copyFromPreviousWeekInMonth(membership, user, body)
+  }
+
+  @Get('timer/active')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '当前运行中的计时器（用于刷新恢复）' })
+  async activeTimer(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const membership = await this.orgContext.getActiveMembership(user.userId, xOrganizationId)
+    return this.timeEntries.getActiveTimer(membership, user)
+  }
+
+  @Post('timer/start')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '开始计时：落库一条 RUNNING 计时器（会停止旧的）' })
+  async startTimer(
+    @Body() body: StartTimeEntryTimerDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const membership = await this.orgContext.getActiveMembership(user.userId, xOrganizationId)
+    return this.timeEntries.startTimer(membership, user, body)
+  }
+
+  @Post('timer/:id/stop')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '停止计时：标记 STOPPED 并按耗时生成工时记录' })
+  async stopTimer(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const membership = await this.orgContext.getActiveMembership(user.userId, xOrganizationId)
+    return this.timeEntries.stopTimer(membership, user, id)
   }
 
   @Post()

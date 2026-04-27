@@ -112,6 +112,8 @@ export class ApprovalsService {
     projectIds: string[],
     roleIds: string[],
     userIds: string[],
+    /** 仅 getView 使用：Pending 视图中除 SUBMITTED 外，也包含与 WITHDRAWN 周期相关的 UNSUBMITTED 行。approve/按组加载不传此参数。 */
+    viewOpts?: { pendingIncludesUnsubmittedForWithdrawnSubmitters?: string[] },
   ): Prisma.TimeEntryWhereInput {
     const and: Prisma.TimeEntryWhereInput[] = [
       { project: { organizationId: orgId } },
@@ -120,7 +122,20 @@ export class ApprovalsService {
     if (entryStatus === 'APPROVED') {
       and.push({ status: 'APPROVED' as EntryStatus })
     } else if (entryStatus === 'SUBMITTED') {
-      and.push({ status: 'SUBMITTED' as EntryStatus })
+      const w = viewOpts?.pendingIncludesUnsubmittedForWithdrawnSubmitters
+      if (w != null && w.length > 0) {
+        and.push({
+          OR: [
+            { status: 'SUBMITTED' as EntryStatus },
+            {
+              status: 'UNSUBMITTED' as EntryStatus,
+              userId: { in: w },
+            },
+          ],
+        })
+      } else {
+        and.push({ status: 'SUBMITTED' as EntryStatus })
+      }
     } else if (entryStatus === 'UNSUBMITTED') {
       and.push({ status: 'UNSUBMITTED' as EntryStatus })
     }
@@ -217,6 +232,7 @@ export class ApprovalsService {
     projectIds: string[],
     roleIds: string[],
     userIds: string[],
+    viewOpts?: { pendingIncludesUnsubmittedForWithdrawnSubmitters?: string[] },
   ): Prisma.ExpenseWhereInput {
     return this.buildTimeWhere(
       orgId,
@@ -227,7 +243,34 @@ export class ApprovalsService {
       projectIds,
       roleIds,
       userIds,
+      viewOpts,
     ) as Prisma.ExpenseWhereInput
+  }
+
+  /**
+   * 与报表 [gte, lte] 有交集、且 status=WITHDRAWN 的提交人（本组织成员），
+   * 供「Pending approval」筛选项在 SUBMITTED 之外附带展示其被撤回后未再提交的行。
+   */
+  private async submitterIdsWithWithdrawnApprovalsInRange(
+    m: ActiveMembership,
+    gte: Date,
+    lte: Date,
+  ) {
+    const rows = await this.prisma.approval.findMany({
+      where: {
+        status: 'WITHDRAWN',
+        periodStart: { lte: lte },
+        periodEnd: { gte: gte },
+        submitter: {
+          organizations: {
+            some: { organizationId: m.organizationId, status: 'ACTIVE' },
+          },
+        },
+      },
+      select: { submitterId: true },
+      distinct: ['submitterId'],
+    })
+    return rows.map((r) => r.submitterId)
   }
 
   private pickEntryStatus(s: string | undefined): EntryStatusFilter {
@@ -531,6 +574,13 @@ export class ApprovalsService {
     const { gte, lte } = this.parseDateRange(dto.from, dto.to)
     const entryStatus = this.pickEntryStatus(dto.entryStatus)
     const { clientIds, projectIds, roleIds, userIds } = this.parseIdLists(dto)
+    const pendingViewOpts =
+      entryStatus === 'SUBMITTED'
+        ? {
+            pendingIncludesUnsubmittedForWithdrawnSubmitters:
+              await this.submitterIdsWithWithdrawnApprovalsInRange(m, gte, lte),
+          }
+        : undefined
     const tWhere = this.buildTimeWhere(
       m.organizationId,
       gte,
@@ -540,6 +590,7 @@ export class ApprovalsService {
       projectIds,
       roleIds,
       userIds,
+      pendingViewOpts,
     )
     const eWhere = this.buildExpenseWhere(
       m.organizationId,
@@ -550,6 +601,7 @@ export class ApprovalsService {
       projectIds,
       roleIds,
       userIds,
+      pendingViewOpts,
     )
     const includeUser = { select: { id: true, firstName: true, lastName: true, email: true } }
     const includeProject = {
@@ -659,6 +711,64 @@ export class ApprovalsService {
     }
   }
 
+  private timeEntryWhereForApproveSubmitter(
+    m: ActiveMembership,
+    gte: Date,
+    lte: Date,
+    clientIds: string[],
+    projectIds: string[],
+    roleIds: string[],
+    userIds: string[],
+    groupBy: 'PERSON' | 'PROJECT' | 'CLIENT',
+    groupId: string,
+    submitterId: string,
+  ): Prisma.TimeEntryWhereInput {
+    const twg = this.timeWhereWithGroup(
+      m,
+      gte,
+      lte,
+      'SUBMITTED',
+      clientIds,
+      projectIds,
+      roleIds,
+      userIds,
+      groupBy,
+      groupId,
+    )
+    const and = [...(twg.AND as Prisma.TimeEntryWhereInput[])]
+    and.push({ isLocked: false, userId: submitterId })
+    return { AND: and }
+  }
+
+  private expenseWhereForApproveSubmitter(
+    m: ActiveMembership,
+    gte: Date,
+    lte: Date,
+    clientIds: string[],
+    projectIds: string[],
+    roleIds: string[],
+    userIds: string[],
+    groupBy: 'PERSON' | 'PROJECT' | 'CLIENT',
+    groupId: string,
+    submitterId: string,
+  ): Prisma.ExpenseWhereInput {
+    const twg = this.timeWhereWithGroup(
+      m,
+      gte,
+      lte,
+      'SUBMITTED',
+      clientIds,
+      projectIds,
+      roleIds,
+      userIds,
+      groupBy,
+      groupId,
+    ) as { AND: Prisma.ExpenseWhereInput[] }
+    const and = [...(twg.AND as Prisma.ExpenseWhereInput[])]
+    and.push({ isLocked: false, userId: submitterId })
+    return { AND: and }
+  }
+
   /**
    * Load entries in the same filter and group for approve/withdraw.
    * Mutations use `entryStatus=ALL` on the time/expense filter so approved rows are included.
@@ -714,7 +824,8 @@ export class ApprovalsService {
   ) {
     this.requireApprover(m)
     const { gte, lte } = this.parseDateRange(body.from, body.to)
-    const { groupId } = body
+    const { groupId, groupBy } = body
+    const { clientIds, projectIds, roleIds, userIds } = this.parseIdLists(body)
     const [timeRows, expenseRows] = await this.loadGroupEntriesForMutate(m, body, groupId)
     const toApproveT = timeRows.filter((x) => x.status === 'SUBMITTED' && !x.isLocked)
     const toApproveE = expenseRows.filter((x) => x.status === 'SUBMITTED' && !x.isLocked)
@@ -722,51 +833,160 @@ export class ApprovalsService {
       throw new BadRequestException('No submitted items are available to approve')
     }
 
-    const byUser = new Map<string, { timeIds: string[]; expenseIds: string[] }>()
+    const byUser = new Map<string, { hasTime: boolean; hasExpense: boolean }>()
     for (const t of toApproveT) {
       if (!byUser.has(t.userId)) {
-        byUser.set(t.userId, { timeIds: [], expenseIds: [] })
+        byUser.set(t.userId, { hasTime: false, hasExpense: false })
       }
-      byUser.get(t.userId)!.timeIds.push(t.id)
+      byUser.get(t.userId)!.hasTime = true
     }
     for (const e of toApproveE) {
       if (!byUser.has(e.userId)) {
-        byUser.set(e.userId, { timeIds: [], expenseIds: [] })
+        byUser.set(e.userId, { hasTime: false, hasExpense: false })
       }
-      byUser.get(e.userId)!.expenseIds.push(e.id)
+      byUser.get(e.userId)!.hasExpense = true
+    }
+
+    const inApprovalWindow = (p: { periodStart: Date; periodEnd: Date }, d: Date) => {
+      const t0 = d.getTime()
+      return p.periodStart.getTime() <= t0 && t0 <= p.periodEnd.getTime()
     }
 
     const created = await this.prisma.$transaction(async (tx) => {
       let n = 0
-      for (const [submitterId, b] of byUser) {
-        if (b.timeIds.length + b.expenseIds.length === 0) {
+      for (const [submitterId, flags] of byUser) {
+        if (!flags.hasTime && !flags.hasExpense) {
           continue
         }
-        const a = await tx.approval.create({
-          data: {
-            status: 'APPROVED' as const,
-            periodStart: gte,
-            periodEnd: lte,
+        const tBase = this.timeEntryWhereForApproveSubmitter(
+          m,
+          gte,
+          lte,
+          clientIds,
+          projectIds,
+          roleIds,
+          userIds,
+          groupBy,
+          groupId,
+          submitterId,
+        )
+        const eBase = this.expenseWhereForApproveSubmitter(
+          m,
+          gte,
+          lte,
+          clientIds,
+          projectIds,
+          roleIds,
+          userIds,
+          groupBy,
+          groupId,
+          submitterId,
+        )
+        const pendingInRange = await tx.approval.findMany({
+          where: {
             submitterId,
-            approverId: approverUserId,
+            status: 'PENDING',
+            periodStart: { lte: lte },
+            periodEnd: { gte: gte },
           },
+          orderBy: [{ periodStart: 'asc' }, { id: 'asc' }],
+          select: { id: true, periodStart: true, periodEnd: true },
         })
-        if (b.timeIds.length) {
-          await tx.timeEntry.updateMany({
-            where: {
-              id: { in: b.timeIds },
-              project: { organizationId: m.organizationId },
-            },
-            data: { status: 'APPROVED', isLocked: true, approvalId: a.id },
+        const periodById = new Map(
+          pendingInRange.map(
+            (p) => [p.id, p] as [string, { id: string; periodStart: Date; periodEnd: Date }],
+          ),
+        )
+        const allApprovalIds = new Set<string>()
+
+        if (flags.hasTime) {
+          const tIn = await tx.timeEntry.findMany({
+            where: tBase,
+            select: { spentDate: true, approvalId: true },
           })
-          n += b.timeIds.length
+          for (const row of tIn) {
+            if (row.approvalId) {
+              allApprovalIds.add(row.approvalId)
+            } else {
+              const p0 = pendingInRange.find((p) => inApprovalWindow(p, row.spentDate))
+              if (!p0) {
+                throw new BadRequestException(
+                  'A time entry in this view is not covered by a pending approval; complete submit first',
+                )
+              }
+              allApprovalIds.add(p0.id)
+            }
+          }
         }
-        if (b.expenseIds.length) {
-          await tx.expense.updateMany({
-            where: { id: { in: b.expenseIds }, project: { organizationId: m.organizationId } },
-            data: { status: 'APPROVED', isLocked: true, approvalId: a.id },
+        if (flags.hasExpense) {
+          const eIn = await tx.expense.findMany({
+            where: eBase,
+            select: { spentDate: true, approvalId: true },
           })
-          n += b.expenseIds.length
+          for (const row of eIn) {
+            if (row.approvalId) {
+              allApprovalIds.add(row.approvalId)
+            } else {
+              const p0 = pendingInRange.find((p) => inApprovalWindow(p, row.spentDate))
+              if (!p0) {
+                throw new BadRequestException(
+                  'An expense in this view is not covered by a pending approval; complete submit first',
+                )
+              }
+              allApprovalIds.add(p0.id)
+            }
+          }
+        }
+        for (const id of allApprovalIds) {
+          if (periodById.has(id)) {
+            continue
+          }
+          const a = await tx.approval.findFirst({
+            where: { id, submitterId, status: 'PENDING' },
+            select: { id: true, periodStart: true, periodEnd: true },
+          })
+          if (!a) {
+            throw new BadRequestException('Unable to resolve a pending approval for linked entries')
+          }
+          periodById.set(a.id, a)
+        }
+        for (const aid of allApprovalIds) {
+          const u = await tx.approval.updateMany({
+            where: { id: aid, submitterId, status: 'PENDING' },
+            data: { status: 'APPROVED', approverId: approverUserId },
+          })
+          if (u.count === 0) {
+            const still = await tx.approval.findFirst({ where: { id: aid, submitterId } })
+            if (!still || still.status !== 'APPROVED') {
+              throw new BadRequestException('Unable to update approval; submitter mismatch or missing')
+            }
+          }
+        }
+        for (const aid of allApprovalIds) {
+          const p = periodById.get(aid)
+          if (!p) {
+            throw new BadRequestException('Internal error: missing approval period bounds')
+          }
+          const { count: tc } = await tx.timeEntry.updateMany({
+            where: {
+              AND: [
+                ...(tBase.AND as Prisma.TimeEntryWhereInput[]),
+                { spentDate: { gte: p.periodStart, lte: p.periodEnd } },
+              ],
+            },
+            data: { status: 'APPROVED', isLocked: true, approvalId: aid },
+          })
+          n += tc
+          const { count: ec } = await tx.expense.updateMany({
+            where: {
+              AND: [
+                ...(eBase.AND as Prisma.ExpenseWhereInput[]),
+                { spentDate: { gte: p.periodStart, lte: p.periodEnd } },
+              ],
+            },
+            data: { status: 'APPROVED', isLocked: true, approvalId: aid },
+          })
+          n += ec
         }
       }
       return n
