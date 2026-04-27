@@ -88,6 +88,8 @@ model UserOrganization {
   inviteToken     String?      @unique
   inviteExpiresAt DateTime?
   systemRole      SystemRole   @default(MEMBER)
+  /// 仅当 systemRole=MANAGER 时有效；额外能力开关（Harvest 风格 8 项）
+  managerPermissions Json?
   customRoles     Role[]
 
   managerId    String?

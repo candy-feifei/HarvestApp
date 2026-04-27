@@ -35,7 +35,7 @@ export function AppSidebar() {
   const email = payload?.email ?? ''
   const displayName = email
     ? email.split('@')[0]!.replace(/[._-]/g, ' ')
-    : '用户'
+    : 'User'
   const initials = email ? emailToInitials(email) : 'U'
 
   function handleLogout() {
@@ -60,7 +60,7 @@ export function AppSidebar() {
           <p className="truncate text-[15px] font-semibold tracking-tight text-foreground">
             HarvestApp
           </p>
-          <p className="truncate text-xs text-muted-foreground">时间与项目</p>
+          <p className="truncate text-xs text-muted-foreground">Time & projects</p>
         </div>
       </button>
 
@@ -109,7 +109,7 @@ export function AppSidebar() {
                                 ? 'bg-white/20 text-white'
                                 : 'bg-[#0061FF] text-white',
                             )}
-                            title="待处理"
+                            title="Pending"
                           >
                             {item.pendingCount}
                           </span>
@@ -161,7 +161,7 @@ export function AppSidebar() {
                 {displayName}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {email || '已登录'}
+                {email || 'Signed in'}
               </p>
             </div>
             <ChevronDown
@@ -178,7 +178,7 @@ export function AppSidebar() {
           onClick={handleLogout}
         >
           <LogOut className="size-4" strokeWidth={1.75} aria-hidden />
-          退出登录
+          Log out
         </Button>
       </div>
     </aside>

@@ -8,11 +8,13 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator'
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto'
+import { CreateOrganizationRoleDto } from './dto/create-organization-role.dto'
 import { InviteMemberDto } from './dto/invite-member.dto'
 import { CreateMemberRateDto } from './dto/create-member-rate.dto'
 import { TeamWeeklyQueryDto } from './dto/team-weekly.query.dto'
 import { UpdateMemberRateDto } from './dto/update-member-rate.dto'
 import { UpdateMemberDto } from './dto/update-member.dto'
+import { UpdateOrganizationRoleDto } from './dto/update-organization-role.dto'
 import {
   ProjectAssignmentsQueryDto,
   SetMemberProjectAssignmentsDto,
@@ -57,6 +59,91 @@ export class OrganizationController {
       xOrganizationId,
     )
     return this.organizationService.listMembers(m.organizationId)
+  }
+
+  @Get('roles')
+  @ApiHeader({
+    name: 'X-Organization-Id',
+    required: false,
+  })
+  @ApiOperation({ summary: '组织自定义角色（Team → Roles）' })
+  async listOrganizationRoles(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.listOrganizationRoles(m.organizationId)
+  }
+
+  @Post('roles')
+  @ApiHeader({
+    name: 'X-Organization-Id',
+    required: false,
+  })
+  @ApiOperation({ summary: '创建自定义角色并分配成员' })
+  async createOrganizationRole(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+    @Body() dto: CreateOrganizationRoleDto,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.createOrganizationRole(
+      m.organizationId,
+      m.systemRole,
+      dto,
+    )
+  }
+
+  @Patch('roles/:roleId')
+  @ApiHeader({
+    name: 'X-Organization-Id',
+    required: false,
+  })
+  @ApiOperation({ summary: '更新角色名称与成员' })
+  async updateOrganizationRole(
+    @Param('roleId') roleId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+    @Body() dto: UpdateOrganizationRoleDto,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.updateOrganizationRole(
+      m.organizationId,
+      roleId,
+      m.systemRole,
+      dto,
+    )
+  }
+
+  @Delete('roles/:roleId')
+  @ApiHeader({
+    name: 'X-Organization-Id',
+    required: false,
+  })
+  @ApiOperation({ summary: '删除自定义角色' })
+  async deleteOrganizationRole(
+    @Param('roleId') roleId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.deleteOrganizationRole(
+      m.organizationId,
+      m.systemRole,
+      roleId,
+    )
   }
 
   @Post('members/invite')
@@ -130,7 +217,12 @@ export class OrganizationController {
       user.userId,
       xOrganizationId,
     )
-    return this.organizationService.updateMember(m.organizationId, memberId, dto)
+    return this.organizationService.updateMember(
+      m.organizationId,
+      memberId,
+      dto,
+      m.systemRole,
+    )
   }
 
   @Get('members/:memberId/rates')
@@ -251,6 +343,46 @@ export class OrganizationController {
       m.systemRole,
       memberId,
       dto,
+    )
+  }
+
+  @Post('members/:memberId/archive')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '归档成员（从团队列表隐藏，可数据保留）' })
+  async archiveMember(
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.archiveMember(
+      m.organizationId,
+      memberId,
+      m.systemRole,
+      user.userId,
+    )
+  }
+
+  @Delete('members/:memberId')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: '从组织删除成员' })
+  async removeMember(
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.organizationService.removeMember(
+      m.organizationId,
+      memberId,
+      m.systemRole,
+      user.userId,
     )
   }
 

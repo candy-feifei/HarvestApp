@@ -9,6 +9,7 @@ export type TeamMemberRow = {
   lastName: string
   invitationStatus: string
   weeklyCapacity: number
+  isPinned: boolean
   employeeId: string | null
   employmentType: 'EMPLOYEE' | 'CONTRACTOR'
   jobLabel: string | null
@@ -55,6 +56,7 @@ export type TeamWeeklySummaryItem = {
   lastName: string
   invitationStatus: string
   systemRole: string
+  isPinned: boolean
   weeklyCapacity: number
   hours: number
   billableHours: number
@@ -84,6 +86,19 @@ export function getTeamWeeklySummary(week?: string) {
   })
 }
 
+export type SystemRoleName = 'MEMBER' | 'MANAGER' | 'ADMINISTRATOR'
+
+export type ManagerPermissions = {
+  createEditManagedProjects: boolean
+  createEditAllClientsTasks: boolean
+  createEditTimeExpensesManaged: boolean
+  seeEditBillableRatesManaged: boolean
+  createEditDraftInvoices: boolean
+  manageAllInvoices: boolean
+  createEditAllEstimates: boolean
+  withdrawApprovals: boolean
+}
+
 export type TeamMemberDetail = {
   memberId: string
   userId: string
@@ -97,6 +112,7 @@ export type TeamMemberDetail = {
   jobLabel: string | null
   weeklyCapacity: number
   systemRole: string
+  managerPermissions?: ManagerPermissions
   isPinned: boolean
   status: string
   /** 新 API 字段；旧环境可能暂时缺省 */
@@ -120,6 +136,9 @@ export type UpdateTeamMemberPayload = Partial<{
   jobLabel: string
   weeklyCapacity: number
   timezone: string
+  systemRole: SystemRoleName
+  managerPermissions: ManagerPermissions
+  isPinned: boolean
 }>
 
 export function updateTeamMember(memberId: string, body: UpdateTeamMemberPayload) {
@@ -127,6 +146,20 @@ export function updateTeamMember(memberId: string, body: UpdateTeamMemberPayload
     method: 'PATCH',
     body: JSON.stringify(body),
   })
+}
+
+export function archiveTeamMember(memberId: string) {
+  return apiRequest<{ archived: true; memberId: string }>(
+    `/organizations/members/${memberId}/archive`,
+    { method: 'POST' },
+  )
+}
+
+export function removeTeamMember(memberId: string) {
+  return apiRequest<{ deleted: true; memberId: string }>(
+    `/organizations/members/${memberId}`,
+    { method: 'DELETE' },
+  )
 }
 
 export function resendTeamInvitation(memberId: string) {
@@ -235,5 +268,55 @@ export function setMemberProjectAssignments(
   return apiRequest<MemberProjectAssignmentsResponse>(
     `/organizations/members/${memberId}/project-assignments`,
     { method: 'PUT', body: JSON.stringify(body) },
+  )
+}
+
+export type TeamCustomRoleMember = {
+  memberId: string
+  firstName: string
+  lastName: string
+  email: string
+}
+
+export type TeamCustomRole = {
+  id: string
+  name: string
+  members: TeamCustomRoleMember[]
+}
+
+export function listTeamRoles() {
+  return apiRequest<{ items: TeamCustomRole[] }>('/organizations/roles', {
+    method: 'GET',
+  })
+}
+
+export type CreateTeamRolePayload = {
+  name: string
+  memberUserOrganizationIds?: string[]
+}
+
+export function createTeamRole(body: CreateTeamRolePayload) {
+  return apiRequest<TeamCustomRole>('/organizations/roles', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export type UpdateTeamRolePayload = Partial<{
+  name: string
+  memberUserOrganizationIds: string[]
+}>
+
+export function updateTeamRole(roleId: string, body: UpdateTeamRolePayload) {
+  return apiRequest<TeamCustomRole>(`/organizations/roles/${roleId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteTeamRole(roleId: string) {
+  return apiRequest<{ deleted: true; roleId: string }>(
+    `/organizations/roles/${roleId}`,
+    { method: 'DELETE' },
   )
 }

@@ -46,11 +46,11 @@ function ClientContactForm({
     e.preventDefault()
     setFormError(null)
     if (!firstName.trim() || !lastName.trim()) {
-      setFormError('请填写名与姓。')
+      setFormError('Please enter first and last name.')
       return
     }
     if (!email.trim()) {
-      setFormError('请填写邮箱。')
+      setFormError('Please enter an email address.')
       return
     }
     setSubmitting(true)
@@ -75,13 +75,14 @@ function ClientContactForm({
         const msg = err.body
         if (typeof msg === 'object' && msg && 'message' in msg) {
           setFormError(
-            String((msg as { message: string }).message) || '保存失败，请重试。',
+            String((msg as { message: string }).message) ||
+              'Save failed. Please try again.',
           )
         } else {
-          setFormError(err.message || '保存失败，请重试。')
+          setFormError(err.message || 'Save failed. Please try again.')
         }
       } else {
-        setFormError('网络错误，请重试。')
+        setFormError('Network error. Please try again.')
       }
     } finally {
       setSubmitting(false)
@@ -91,10 +92,10 @@ function ClientContactForm({
   return (
     <>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-        编辑联系人 — {clientName}
+        Edit contact — {clientName}
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-        修改后不会自动发邮件。邮箱供内部参考与开票使用。
+        We won’t send email automatically. Use this for your records and invoicing.
       </p>
 
       <form onSubmit={onSubmit} className="mt-8 space-y-0">
@@ -103,7 +104,7 @@ function ClientContactForm({
             className="text-sm font-medium text-foreground"
             htmlFor="ec-first"
           >
-            名
+            First name
           </label>
           <div className={fieldWrap}>
             <input
@@ -120,7 +121,7 @@ function ClientContactForm({
             className="text-sm font-medium text-foreground"
             htmlFor="ec-last"
           >
-            姓
+            Last name
           </label>
           <div className={fieldWrap}>
             <input
@@ -137,7 +138,7 @@ function ClientContactForm({
             className="text-sm font-medium text-foreground"
             htmlFor="ec-email"
           >
-            邮箱
+            Email
           </label>
           <div className={fieldWrap}>
             <input
@@ -156,7 +157,7 @@ function ClientContactForm({
 
         <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-[minmax(140px,200px)_1fr] sm:items-center">
           <label className={labelCls} htmlFor="ec-title">
-            职位
+            Title
           </label>
           <div className={fieldWrap}>
             <input
@@ -169,7 +170,7 @@ function ClientContactForm({
           </div>
 
           <label className={labelCls} htmlFor="ec-office">
-            办公电话
+            Office phone
           </label>
           <div className={fieldWrap}>
             <input
@@ -183,7 +184,7 @@ function ClientContactForm({
           </div>
 
           <label className={labelCls} htmlFor="ec-mobile">
-            手机
+            Mobile
           </label>
           <div className={fieldWrap}>
             <input
@@ -197,7 +198,7 @@ function ClientContactForm({
           </div>
 
           <label className={labelCls} htmlFor="ec-fax">
-            传真
+            Fax
           </label>
           <div className={fieldWrap}>
             <input
@@ -223,7 +224,7 @@ function ClientContactForm({
             disabled={submitting}
             className="h-10 min-w-[120px] px-5 shadow-sm"
           >
-            {submitting ? '保存中…' : '保存联系人'}
+            {submitting ? 'Saving…' : 'Save contact'}
           </Button>
           <Button
             type="button"
@@ -231,7 +232,7 @@ function ClientContactForm({
             className="h-10"
             onClick={() => navigate(-1)}
           >
-            取消
+            Cancel
           </Button>
         </div>
       </form>
@@ -257,14 +258,14 @@ export function ClientContactEditPage() {
   })
 
   if (clientLoading || !client || contactLoading) {
-    return <p className="text-sm text-muted-foreground">加载中…</p>
+    return <p className="text-sm text-muted-foreground">Loading…</p>
   }
 
   if (contactError || !contact) {
     const message =
       contactError instanceof ApiError && contactError.status === 404
-        ? '未找到该联系人。'
-        : '无法加载联系人。'
+        ? 'Contact not found.'
+        : 'Could not load contact.'
     return <p className="text-sm text-destructive">{message}</p>
   }
 
@@ -272,7 +273,7 @@ export function ClientContactEditPage() {
     <div className="mx-auto max-w-2xl">
       <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         <Link to="/clients" className="text-foreground hover:underline">
-          客户
+          Clients
         </Link>
       </p>
       <ClientContactForm

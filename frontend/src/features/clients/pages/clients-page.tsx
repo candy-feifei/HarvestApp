@@ -110,7 +110,7 @@ export function ClientsPage() {
     error instanceof ApiError
       ? error.message
       : error
-        ? '无法加载客户列表。'
+        ? 'Could not load the client list.'
         : null
 
   const items = data?.items ?? []
@@ -122,16 +122,17 @@ export function ClientsPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            客户
+            Clients
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            管理客户、账期与税率；创建后可添加项目与联系人。
+            Manage clients, payment terms, and tax rates. After you create a
+            client, you can add projects and contacts.
           </p>
         </div>
         <Button asChild className="h-9 gap-2 self-start sm:self-auto">
           <Link to="/clients/new">
             <Plus className="size-4" aria-hidden />
-            新建客户
+            New client
           </Link>
         </Button>
       </div>
@@ -160,13 +161,13 @@ export function ClientsPage() {
       ) : null}
 
       {isLoading && !data ? (
-        <p className="text-sm text-muted-foreground">加载中…</p>
+        <p className="text-sm text-muted-foreground">Loading…</p>
       ) : null}
 
       {showList ? (
         <ul className="flex flex-col gap-2.5">
           {isFetching && !isLoading ? (
-            <li className="text-xs text-muted-foreground">更新中…</li>
+            <li className="text-xs text-muted-foreground">Updating…</li>
           ) : null}
           {items.map((c) => (
             <li key={c.id}>
@@ -178,7 +179,8 @@ export function ClientsPage() {
 
       {showEmpty ? (
         <div className="rounded-md border border-dashed border-border bg-muted/20 px-6 py-10 text-center text-sm text-muted-foreground">
-          还没有客户。点击「新建客户」开始，或调整筛选条件。
+          No clients yet. Click &quot;New client&quot; to get started, or adjust
+          your filters.
         </div>
       ) : null}
     </div>

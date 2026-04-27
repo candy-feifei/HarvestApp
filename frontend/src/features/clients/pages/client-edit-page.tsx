@@ -72,17 +72,17 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
     e.preventDefault()
     setFormError(null)
     if (!name.trim()) {
-      setFormError('请填写客户名称。')
+      setFormError('Please enter a client name.')
       return
     }
     if (invoiceDueMode === 'NET_DAYS' && (invoiceNetDays < 1 || invoiceNetDays > 180)) {
-      setFormError('账期天数应在 1–180 之间。')
+      setFormError('Net days must be between 1 and 180.')
       return
     }
     if (secondTaxEnabled) {
       const s = parseOptionalPercent(secondaryTaxRate)
       if (s == null) {
-        setFormError('启用第二税率时请填写第二税率。')
+        setFormError('Enter a value for the second tax rate.')
         return
       }
     }
@@ -110,13 +110,14 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
         const msg = err.body
         if (typeof msg === 'object' && msg && 'message' in msg) {
           setFormError(
-            String((msg as { message: string }).message) || '保存失败，请重试。',
+            String((msg as { message: string }).message) ||
+              'Save failed. Please try again.',
           )
         } else {
-          setFormError(err.message || '保存失败，请重试。')
+          setFormError(err.message || 'Save failed. Please try again.')
         }
       } else {
-        setFormError('网络错误，请重试。')
+        setFormError('Network error. Please try again.')
       }
     } finally {
       setSubmitting(false)
@@ -130,7 +131,7 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
       <form onSubmit={onSubmit} className="min-w-0 space-y-0">
         <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-[200px_1fr] sm:items-start">
           <label className={labelCls} htmlFor="edit-client-name">
-            客户名称
+            Client name
           </label>
           <div className={fieldWrap}>
             <input
@@ -144,7 +145,7 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
           </div>
 
           <label className={labelCls} htmlFor="edit-client-address">
-            地址
+            Address
           </label>
           <div className={fieldWrap}>
             <textarea
@@ -157,7 +158,7 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
           </div>
 
           <label className={labelCls} htmlFor="edit-currency">
-            首选货币
+            Currency
           </label>
           <div className={fieldWrap}>
             <select
@@ -175,7 +176,7 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
               }}
             >
               <option value="__ACCOUNT__">
-                与账户一致（{currencyLabel(accountCurrency)} – {accountCurrency}）
+                Same as account ({currencyLabel(accountCurrency)} – {accountCurrency})
               </option>
               {SUPPORTED_CURRENCIES.map((c) => (
                 <option key={c.code} value={c.code}>
@@ -190,7 +191,7 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
 
         <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-[200px_1fr] sm:items-start">
           <label className={labelCls} htmlFor="edit-invoice-due">
-            发票付款期限
+            Invoice payment terms
           </label>
           <div className={cn(fieldWrap, 'space-y-2')}>
             <select
@@ -213,18 +214,18 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
                 }
               }}
             >
-              <option value="UPON_RECEIPT">收到时付款</option>
-              <option value="NET_15">发票后 15 天</option>
-              <option value="NET_30">发票后 30 天</option>
-              <option value="NET_45">发票后 45 天</option>
-              <option value="NET_60">发票后 60 天</option>
-              <option value="NET_CUSTOM">发票后 N 天（自定义）</option>
+              <option value="UPON_RECEIPT">Due on receipt</option>
+              <option value="NET_15">Net 15</option>
+              <option value="NET_30">Net 30</option>
+              <option value="NET_45">Net 45</option>
+              <option value="NET_60">Net 60</option>
+              <option value="NET_CUSTOM">Net N (custom days)</option>
             </select>
             {invoiceDueMode === 'NET_DAYS' &&
               invoiceDueSelectValue(invoiceDueMode, invoiceNetDays) ===
                 'NET_CUSTOM' && (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">天数</span>
+                  <span className="text-sm text-muted-foreground">Days</span>
                   <input
                     type="number"
                     min={1}
@@ -238,7 +239,7 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
           </div>
 
           <label className={labelCls} htmlFor="edit-tax-1">
-            税率
+            Tax rate
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -256,14 +257,14 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
                 className="ml-1 text-sm font-medium text-primary hover:underline"
                 onClick={() => setSecondTaxEnabled(true)}
               >
-                启用第二税率
+                Add second tax rate
               </button>
             )}
           </div>
 
           {secondTaxEnabled && (
             <>
-              <span className={labelCls}>第二税率</span>
+              <span className={labelCls}>Second tax rate</span>
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   className="w-24 rounded-md border border-border bg-white px-2 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
@@ -281,14 +282,14 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
                     setSecondaryTaxRate('')
                   }}
                 >
-                  移除
+                  Remove
                 </button>
               </div>
             </>
           )}
 
           <label className={labelCls} htmlFor="edit-discount">
-            折扣
+            Discount
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -315,7 +316,7 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
             disabled={submitting}
             className="h-10 min-w-[120px] px-5 shadow-sm"
           >
-            {submitting ? '保存中…' : '保存客户'}
+            {submitting ? 'Saving…' : 'Save client'}
           </Button>
           <Button
             type="button"
@@ -323,20 +324,20 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
             className="h-10"
             onClick={() => navigate(-1)}
           >
-            取消
+            Cancel
           </Button>
           <Link
             to="/clients"
             className="ml-auto text-sm text-muted-foreground hover:text-foreground"
           >
-            返回列表
+            Back to list
           </Link>
         </div>
       </form>
 
       <aside className="space-y-3 lg:sticky lg:top-0">
         <div className="rounded-lg border border-sky-200/90 bg-sky-50/90 px-4 py-3 text-sm">
-          <p className="font-semibold text-sky-950">活跃项目</p>
+          <p className="font-semibold text-sky-950">Active projects</p>
           {client.activeProjects && client.activeProjects.length > 0 ? (
             <ul className="mt-2 list-inside list-disc text-sky-900/90">
               {client.activeProjects.map((p) => (
@@ -344,12 +345,13 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
               ))}
             </ul>
           ) : (
-            <p className="mt-2 text-sky-900/70">尚无未归档项目。</p>
+            <p className="mt-2 text-sky-900/70">No active projects yet.</p>
           )}
         </div>
         {hasActiveProjects && (
           <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
-            该客户下仍有未归档项目时，通常无法将客户归档；请先在「项目」中处理相关项目状态。
+            While this client has active projects, archiving may be blocked. Update
+            project status in Projects first.
           </div>
         )}
       </aside>
@@ -381,19 +383,19 @@ export function ClientEditPage() {
   const orgErr =
     ctxError instanceof ApiError
       ? ctxError.status === 401
-        ? '登录已过期，请重新登录后再试。'
-        : `无法加载组织：${ctxError.message}`
+        ? 'Your session has expired. Please sign in again.'
+        : `Could not load organization: ${ctxError.message}`
       : ctxError
-        ? '无法加载组织信息。'
+        ? 'Could not load organization.'
         : null
 
   const clientErr =
     clientError instanceof ApiError
       ? clientError.status === 404
-        ? '未找到该客户。'
+        ? 'Client not found.'
         : clientError.message
       : clientError
-        ? '无法加载客户。'
+        ? 'Could not load client.'
         : null
 
   if (orgErr) {
@@ -405,17 +407,17 @@ export function ClientEditPage() {
   }
 
   if (orgLoading || (clientId && clientLoading) || !ctx) {
-    return <p className="text-sm text-muted-foreground">加载中…</p>
+    return <p className="text-sm text-muted-foreground">Loading…</p>
   }
 
   if (clientId && !client && !clientErr) {
-    return <p className="text-sm text-muted-foreground">加载中…</p>
+    return <p className="text-sm text-muted-foreground">Loading…</p>
   }
 
   if (clientErr || !client) {
     return (
       <p className="text-sm text-destructive" role="alert">
-        {clientErr || '未找到该客户。'}
+        {clientErr || 'Client not found.'}
       </p>
     )
   }
@@ -424,13 +426,13 @@ export function ClientEditPage() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-6">
         <Button variant="ghost" asChild className="mb-2 h-auto px-0 text-muted-foreground">
-          <Link to="/clients">← 返回客户列表</Link>
+          <Link to="/clients">← Back to clients</Link>
         </Button>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          编辑客户
+          Edit client
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          修改此客户的开票与账期信息。
+          Update this client’s invoicing and payment terms.
         </p>
       </div>
 

@@ -57,7 +57,7 @@ export function NewClientPage() {
         if (cancelled) return
         if (err instanceof ApiError) {
           if (err.status === 401) {
-            setLoadError('登录已过期，请重新登录后再试。')
+            setLoadError('Your session has expired. Please sign in again.')
             return
           }
           const body = err.body
@@ -69,12 +69,12 @@ export function NewClientPage() {
               : err.message
           setLoadError(
             err.status === 403
-              ? `无法获取组织：${msg || '无权限'}`
-              : `无法加载组织信息：${msg || err.message}`,
+              ? `Could not load organization: ${msg || 'Access denied'}.`
+              : `Could not load organization: ${msg || err.message}`,
           )
           return
         }
-        setLoadError('网络异常，请检查后端是否已启动。')
+        setLoadError('Network error. Check that the server is running.')
       })
     return () => {
       cancelled = true
@@ -93,17 +93,17 @@ export function NewClientPage() {
     e.preventDefault()
     setFormError(null)
     if (!name.trim()) {
-      setFormError('请填写客户名称。')
+      setFormError('Please enter a client name.')
       return
     }
     if (invoiceDueMode === 'NET_DAYS' && (invoiceNetDays < 1 || invoiceNetDays > 180)) {
-      setFormError('账期天数应在 1–180 之间。')
+      setFormError('Net days must be between 1 and 180.')
       return
     }
     if (secondTaxEnabled) {
       const s = parseOptionalPercent(secondaryTaxRate)
       if (s == null) {
-        setFormError('启用第二税率时请填写第二税率。')
+        setFormError('Enter a value for the second tax rate.')
         return
       }
     }
@@ -131,13 +131,13 @@ export function NewClientPage() {
         if (typeof msg === 'object' && msg && 'message' in msg) {
           setFormError(
             String((msg as { message: string }).message) ||
-              '保存失败，请重试。',
+              'Save failed. Please try again.',
           )
         } else {
-          setFormError(err.message || '保存失败，请重试。')
+          setFormError(err.message || 'Save failed. Please try again.')
         }
       } else {
-        setFormError('网络错误，请重试。')
+        setFormError('Network error. Please try again.')
       }
     } finally {
       setSubmitting(false)
@@ -158,17 +158,17 @@ export function NewClientPage() {
     <div className="mx-auto max-w-2xl">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          新建客户
+          New client
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          添加客户后，即可创建项目与联系人。
+          After you add a client, you can create projects and contacts.
         </p>
       </div>
 
       <form onSubmit={onSubmit} className="space-y-0">
         <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-[200px_1fr] sm:items-start">
           <label className={labelCls} htmlFor="client-name">
-            客户名称
+            Client name
           </label>
           <div className={fieldWrap}>
             <input
@@ -182,7 +182,7 @@ export function NewClientPage() {
           </div>
 
           <label className={labelCls} htmlFor="client-address">
-            地址
+            Address
           </label>
           <div className={fieldWrap}>
             <textarea
@@ -195,7 +195,7 @@ export function NewClientPage() {
           </div>
 
           <label className={labelCls} htmlFor="client-currency">
-            首选货币
+            Currency
           </label>
           <div className={fieldWrap}>
             <select
@@ -213,7 +213,7 @@ export function NewClientPage() {
               }}
             >
               <option value="__ACCOUNT__">
-                与账户一致（{currencyLabel(accountCurrency)} – {accountCurrency}）
+                Same as account ({currencyLabel(accountCurrency)} – {accountCurrency})
               </option>
               {SUPPORTED_CURRENCIES.map((c) => (
                 <option key={c.code} value={c.code}>
@@ -228,7 +228,7 @@ export function NewClientPage() {
 
         <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-[200px_1fr] sm:items-start">
           <label className={labelCls} htmlFor="invoice-due">
-            发票付款期限
+            Invoice payment terms
           </label>
           <div className={cn(fieldWrap, 'space-y-2')}>
             <select
@@ -254,12 +254,12 @@ export function NewClientPage() {
                 }
               }}
             >
-              <option value="UPON_RECEIPT">收到时付款</option>
-              <option value="NET_15">发票后 15 天</option>
-              <option value="NET_30">发票后 30 天</option>
-              <option value="NET_45">发票后 45 天</option>
-              <option value="NET_60">发票后 60 天</option>
-              <option value="NET_CUSTOM">发票后 N 天（自定义）</option>
+              <option value="UPON_RECEIPT">Due on receipt</option>
+              <option value="NET_15">Net 15</option>
+              <option value="NET_30">Net 30</option>
+              <option value="NET_45">Net 45</option>
+              <option value="NET_60">Net 60</option>
+              <option value="NET_CUSTOM">Net N (custom days)</option>
             </select>
             {invoiceDueMode === 'NET_DAYS' &&
               invoiceDueSelectValue(
@@ -267,7 +267,7 @@ export function NewClientPage() {
                 invoiceNetDays,
               ) === 'NET_CUSTOM' && (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">天数</span>
+                  <span className="text-sm text-muted-foreground">Days</span>
                   <input
                     type="number"
                     min={1}
@@ -283,7 +283,7 @@ export function NewClientPage() {
           </div>
 
           <label className={labelCls} htmlFor="tax-1">
-            税率
+            Tax rate
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -301,14 +301,14 @@ export function NewClientPage() {
                 className="ml-1 text-sm font-medium text-primary hover:underline"
                 onClick={() => setSecondTaxEnabled(true)}
               >
-                启用第二税率
+                Add second tax rate
               </button>
             )}
           </div>
 
           {secondTaxEnabled && (
             <>
-              <span className={labelCls}>第二税率</span>
+              <span className={labelCls}>Second tax rate</span>
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   className="w-24 rounded-md border border-border bg-white px-2 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
@@ -326,14 +326,14 @@ export function NewClientPage() {
                     setSecondaryTaxRate('')
                   }}
                 >
-                  移除
+                  Remove
                 </button>
               </div>
             </>
           )}
 
           <label className={labelCls} htmlFor="discount">
-            折扣
+            Discount
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -363,7 +363,7 @@ export function NewClientPage() {
             disabled={submitting}
             className="h-10 min-w-[120px] px-5 shadow-sm"
           >
-            {submitting ? '保存中…' : '保存客户'}
+            {submitting ? 'Saving…' : 'Save client'}
           </Button>
           <Button
             type="button"
@@ -371,13 +371,13 @@ export function NewClientPage() {
             className="h-10"
             onClick={() => navigate(-1)}
           >
-            取消
+            Cancel
           </Button>
           <Link
             to="/clients"
             className="ml-auto text-sm text-muted-foreground hover:text-foreground"
           >
-            返回列表
+            Back to list
           </Link>
         </div>
       </form>

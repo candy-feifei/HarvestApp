@@ -39,11 +39,11 @@ export function NewClientContactPage() {
     e.preventDefault()
     setFormError(null)
     if (!firstName.trim() || !lastName.trim()) {
-      setFormError('请填写名与姓。')
+      setFormError('Please enter first and last name.')
       return
     }
     if (!email.trim()) {
-      setFormError('请填写邮箱。')
+      setFormError('Please enter an email address.')
       return
     }
     setSubmitting(true)
@@ -65,13 +65,14 @@ export function NewClientContactPage() {
         const msg = err.body
         if (typeof msg === 'object' && msg && 'message' in msg) {
           setFormError(
-            String((msg as { message: string }).message) || '保存失败，请重试。',
+            String((msg as { message: string }).message) ||
+              'Save failed. Please try again.',
           )
         } else {
-          setFormError(err.message || '保存失败，请重试。')
+          setFormError(err.message || 'Save failed. Please try again.')
         }
       } else {
-        setFormError('网络错误，请重试。')
+        setFormError('Network error. Please try again.')
       }
     } finally {
       setSubmitting(false)
@@ -79,14 +80,14 @@ export function NewClientContactPage() {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">加载中…</p>
+    return <p className="text-sm text-muted-foreground">Loading…</p>
   }
 
   if (error || !client) {
     const message =
       error instanceof ApiError && error.status === 404
-        ? '未找到该客户。'
-        : '无法加载客户信息。'
+        ? 'Client not found.'
+        : 'Could not load client.'
     return <p className="text-sm text-destructive">{message}</p>
   }
 
@@ -94,20 +95,21 @@ export function NewClientContactPage() {
     <div className="mx-auto max-w-2xl">
       <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         <Link to="/clients" className="text-foreground hover:underline">
-          客户
+          Clients
         </Link>
       </p>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-        为 {client.name} 添加新联系人
+        New contact for {client.name}
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-        添加联系人不会自动发送邮件。邮箱仅作您自己的记录，并便于以后在系统内直接向该客户发送发票。
+        We won’t email this person automatically. The email is stored for your
+        records and for invoicing this client.
       </p>
 
       <form onSubmit={onSubmit} className="mt-8 space-y-0">
         <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-[minmax(140px,200px)_1fr] sm:items-center">
           <label className="text-sm font-medium text-foreground" htmlFor="c-first">
-            名
+            First name
           </label>
           <div className={fieldWrap}>
             <input
@@ -121,7 +123,7 @@ export function NewClientContactPage() {
           </div>
 
           <label className="text-sm font-medium text-foreground" htmlFor="c-last">
-            姓
+            Last name
           </label>
           <div className={fieldWrap}>
             <input
@@ -135,7 +137,7 @@ export function NewClientContactPage() {
           </div>
 
           <label className="text-sm font-medium text-foreground" htmlFor="c-email">
-            邮箱
+            Email
           </label>
           <div className={fieldWrap}>
             <input
@@ -154,7 +156,7 @@ export function NewClientContactPage() {
 
         <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-[minmax(140px,200px)_1fr] sm:items-center">
           <label className={labelCls} htmlFor="c-title">
-            职位
+            Title
           </label>
           <div className={fieldWrap}>
             <input
@@ -167,7 +169,7 @@ export function NewClientContactPage() {
           </div>
 
           <label className={labelCls} htmlFor="c-office">
-            办公电话
+            Office phone
           </label>
           <div className={fieldWrap}>
             <input
@@ -181,7 +183,7 @@ export function NewClientContactPage() {
           </div>
 
           <label className={labelCls} htmlFor="c-mobile">
-            手机
+            Mobile
           </label>
           <div className={fieldWrap}>
             <input
@@ -195,7 +197,7 @@ export function NewClientContactPage() {
           </div>
 
           <label className={labelCls} htmlFor="c-fax">
-            传真
+            Fax
           </label>
           <div className={fieldWrap}>
             <input
@@ -221,7 +223,7 @@ export function NewClientContactPage() {
             disabled={submitting}
             className="h-10 min-w-[120px] px-5 shadow-sm"
           >
-            {submitting ? '保存中…' : '保存联系人'}
+            {submitting ? 'Saving…' : 'Save contact'}
           </Button>
           <Button
             type="button"
@@ -229,7 +231,7 @@ export function NewClientContactPage() {
             className="h-10"
             onClick={() => navigate(-1)}
           >
-            取消
+            Cancel
           </Button>
         </div>
       </form>

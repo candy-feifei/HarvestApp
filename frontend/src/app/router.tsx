@@ -52,6 +52,12 @@ const TeamMemberEditPage = lazy(() =>
   })),
 )
 
+const TeamRoleFormPage = lazy(() =>
+  import('@/features/team/pages/team-role-form-page').then((m) => ({
+    default: m.TeamRoleFormPage,
+  })),
+)
+
 const ClientsPage = lazy(() =>
   import('@/features/clients/pages/clients-page').then((m) => ({
     default: m.ClientsPage,
@@ -277,6 +283,22 @@ export const appRouter = createBrowserRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             <TeamMemberEditPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'team/roles/new',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <TeamRoleFormPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'team/roles/:roleId/edit',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <TeamRoleFormPage />
           </Suspense>
         ),
       },

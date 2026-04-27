@@ -13,14 +13,14 @@ export function ClientDetailPage() {
   })
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">加载中…</p>
+    return <p className="text-sm text-muted-foreground">Loading…</p>
   }
 
   if (error) {
     const message =
       error instanceof ApiError && error.status === 404
-        ? '未找到该客户。'
-        : '无法加载客户信息。'
+        ? 'Client not found.'
+        : 'Could not load client.'
     return <p className="text-sm text-destructive">{message}</p>
   }
 
@@ -30,20 +30,20 @@ export function ClientDetailPage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <Button variant="ghost" asChild className="mb-2 h-auto px-0 text-muted-foreground">
-          <Link to="/clients">← 返回客户列表</Link>
+          <Link to="/clients">← Back to clients</Link>
         </Button>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {data.name}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          管理该客户的项目与{' '}
+          Manage this client’s projects, or{' '}
           <Link
             to={`/clients/${clientId}/contacts/new`}
             className="font-medium text-primary underline-offset-2 hover:underline"
           >
-            添加联系人
+            add a contact
           </Link>
-          。
+          .
         </p>
       </div>
     </div>

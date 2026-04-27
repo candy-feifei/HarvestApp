@@ -39,9 +39,9 @@ export const appNavSections: AppNavSection[] = [
     items: [
       {
         id: 'time',
-        title: '工时表',
+        title: 'Timesheet',
         to: '/time',
-        description: '日/周/月视图与填报',
+        description: 'Day, week, and month views',
         icon: Clock,
       },
       {
@@ -59,16 +59,16 @@ export const appNavSections: AppNavSection[] = [
     items: [
       {
         id: 'team',
-        title: '团队',
+        title: 'Team',
         to: '/team',
-        description: '成员、角色与分配',
+        description: 'Members, roles, and assignments',
         icon: Users,
       },
       {
         id: 'clients',
-        title: '客户',
+        title: 'Clients',
         to: '/clients',
-        description: '客户与联系人',
+        description: 'Clients and contacts',
         icon: Building2,
       },
       {
@@ -93,16 +93,16 @@ export const appNavSections: AppNavSection[] = [
     items: [
       {
         id: 'invoices',
-        title: '发票',
+        title: 'Invoices',
         to: '/invoices',
-        description: '开票与账期',
+        description: 'Invoicing and payment terms',
         icon: FileText,
       },
       {
         id: 'estimates',
-        title: '预算报价',
+        title: 'Estimates',
         to: '/estimates',
-        description: '估算与报价单',
+        description: 'Quotes and estimates',
         icon: FileSpreadsheet,
       },
     ],
@@ -146,16 +146,16 @@ export function getAppNavItem(id: string): AppNavItem | undefined {
 export const appFooterNavItems: AppNavItem[] = [
   {
     id: 'settings',
-    title: '设置',
+    title: 'Settings',
     to: '/settings',
-    description: '系统与组织配置',
+    description: 'System and organization',
     icon: Settings2,
   },
   {
     id: 'access',
-    title: '权限与角色',
+    title: 'Access',
     to: '/access',
-    description: 'RBAC',
+    description: 'Roles and permissions',
     icon: Shield,
   },
 ]
