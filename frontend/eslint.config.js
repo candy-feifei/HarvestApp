@@ -38,4 +38,13 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  {
+    files: ['**/*.{test,spec}.ts', '**/*.{test,spec}.tsx', 'vitest.setup.ts'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.vitest },
+    },
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])
