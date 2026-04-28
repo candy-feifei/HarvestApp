@@ -2,7 +2,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig, loadEnv } from 'vite'
+import { loadEnv } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -14,6 +15,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    test: {
+      environment: 'jsdom',
+      setupFiles: [path.resolve(__dirname, 'vitest.setup.ts')],
+      include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    },
     server: {
       proxy: {
         '/api': {
