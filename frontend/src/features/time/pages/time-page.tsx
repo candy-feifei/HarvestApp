@@ -504,9 +504,9 @@ export function TimePage() {
 
   const runCopyFromRecent = useCallback(() => {
     setCopyRecentFeedback(null)
-    if (view === 'week' || view === 'calendar') {
+    if (view === 'week') {
       void doCopyFromRecentWeek.mutateAsync(getWeekOfForApi())
-    } else {
+    } else if (view === 'day') {
       void doCopyFromRecent.mutateAsync(copyTargetYmd)
     }
   }, [view, doCopyFromRecent, doCopyFromRecentWeek, getWeekOfForApi, copyTargetYmd])
@@ -517,8 +517,7 @@ export function TimePage() {
       disabled: !list || listLoading,
       loading: doCopyFromRecent.isPending || doCopyFromRecentWeek.isPending,
       feedback: copyRecentFeedback,
-      label:
-        view === 'day' ? 'Copy from most recent day' : 'Copy from previous week in month',
+      label: view === 'day' ? 'Copy from most recent day' : 'Copy from previous week in month',
     }),
     [
       runCopyFromRecent,
@@ -813,12 +812,18 @@ export function TimePage() {
           statusBadges={
             <>
               {hasWeekApprovalPending && !weekLockedByApproval && (
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
+                <span
+                  className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800"
+                  role="status"
+                >
                   Pending approval
                 </span>
               )}
               {weekLockedByApproval && (
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+                <span
+                  className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                  role="status"
+                >
                   Approved
                 </span>
               )}
@@ -849,12 +854,18 @@ export function TimePage() {
           statusBadges={
             <>
               {hasWeekApprovalPending && !weekLockedByApproval && (
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
+                <span
+                  className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800"
+                  role="status"
+                >
                   Pending approval
                 </span>
               )}
               {weekLockedByApproval && (
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+                <span
+                  className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                  role="status"
+                >
                   Approved
                 </span>
               )}
@@ -1142,68 +1153,42 @@ export function TimePage() {
               setTrackOpen(true)
             }}
           />
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            {!weekLockedByApproval && (
-              <div className="flex flex-col items-start gap-1.5">
+          <div className="flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end sm:w-auto">
+            {showSubmitWeekForApproval && approvalConfirm !== 'submit' && (
+              <div className="flex w-full justify-end sm:w-auto">
                 <Button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-muted-foreground"
-                  onClick={copyFromRecentProps.onClick}
-                  disabled={copyFromRecentProps.disabled || copyFromRecentProps.loading}
+                  className="w-auto shrink-0 bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => setApprovalConfirm('submit')}
+                  disabled={doSubmitWeek.isPending}
                 >
-                  {copyFromRecentProps.loading ? 'Copying…' : copyFromRecentProps.label}
+                  {submitWeekButtonLabel}
                 </Button>
-                {copyFromRecentProps.feedback ? (
-                  <p className="max-w-[min(100%,28rem)] text-xs text-muted-foreground">
-                    {copyFromRecentProps.feedback}
-                  </p>
-                ) : null}
               </div>
             )}
-            <div
-              className={cn(
-                'ml-auto flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end sm:w-auto',
-                !weekLockedByApproval ? '' : 'w-full',
-              )}
-            >
-              {showSubmitWeekForApproval && approvalConfirm !== 'submit' && (
-                <div className="flex w-full justify-end sm:w-auto">
+            {showWithdrawWeekAction && (
+              <div className="flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end">
+                {approvalConfirm !== 'withdraw' && (
                   <Button
                     type="button"
-                    className="w-auto shrink-0 bg-emerald-600 text-white hover:bg-emerald-700"
-                    onClick={() => setApprovalConfirm('submit')}
-                    disabled={doSubmitWeek.isPending}
+                    variant="outline"
+                    className="w-auto shrink-0"
+                    onClick={() => setApprovalConfirm('withdraw')}
+                    disabled={doWithdrawWeek.isPending}
                   >
-                    {submitWeekButtonLabel}
+                    Withdraw
                   </Button>
-                </div>
-              )}
-              {showWithdrawWeekAction && (
-                <div className="flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end">
-                  {approvalConfirm !== 'withdraw' && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-auto shrink-0"
-                      onClick={() => setApprovalConfirm('withdraw')}
-                      disabled={doWithdrawWeek.isPending}
-                    >
-                      Withdraw
-                    </Button>
-                  )}
-                  {approvalConfirm === 'withdraw' && (
-                    <WithdrawWeekConfirmBanner
-                      className="w-full min-w-0"
-                      onCancel={() => setApprovalConfirm(null)}
-                      onConfirm={() => void doWithdrawWeek.mutateAsync(getWeekOfForApi())}
-                      loading={doWithdrawWeek.isPending}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
+                )}
+                {approvalConfirm === 'withdraw' && (
+                  <WithdrawWeekConfirmBanner
+                    className="w-full min-w-0"
+                    onCancel={() => setApprovalConfirm(null)}
+                    onConfirm={() => void doWithdrawWeek.mutateAsync(getWeekOfForApi())}
+                    loading={doWithdrawWeek.isPending}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

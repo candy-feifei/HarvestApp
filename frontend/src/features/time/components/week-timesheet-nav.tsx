@@ -234,14 +234,16 @@ export function WeekTimesheetNav({
           <button
             type="button"
             onClick={onReturnToThisWeek}
-            className="shrink-0 text-sm text-primary underline-offset-2 hover:underline"
+            className="shrink-0 whitespace-nowrap text-sm text-primary underline-offset-2 hover:underline"
           >
             Return to this week
           </button>
         ) : null}
+        {statusBadges ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">{statusBadges}</div>
+        ) : null}
       </div>
       {endSlot ? <div className="flex shrink-0 items-center gap-2">{endSlot}</div> : null}
-      {statusBadges ? <div className="flex flex-wrap items-center justify-end gap-2">{statusBadges}</div> : null}
     </div>
   )
 }
