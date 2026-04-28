@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Lock, StickyNote, X } from 'lucide-react'
 import { ApiError } from '@/lib/api/http'
@@ -15,15 +15,26 @@ import { TrackTimeModal } from '@/features/time/components/track-time-modal'
 import { TimesheetDayPanel } from '@/features/time/components/timesheet-day-panel'
 import { TimesheetCalendarMonth } from '@/features/time/components/timesheet-calendar-month'
 import { WeekTimesheetNav } from '@/features/time/components/week-timesheet-nav'
-import { formatDecimalHoursAsClock, formatLongDateEn, todayUtcYmd } from '@/features/time/time-format'
+import {
+  formatDecimalHoursAsClock,
+  formatElapsedMs,
+  formatLongDateEn,
+  todayUtcYmd,
+} from '@/features/time/time-format'
 import {
   createTimeEntry,
   deleteTimeEntry,
+  getActiveTimeEntryTimer,
   listAssignableTimeRows,
   listTimeEntries,
+  listTrackTimeOptions,
+  startTimeEntryTimer,
+  stopTimeEntryTimer,
   submitTimeWeek,
   updateTimeEntry,
   withdrawTimeWeek,
+  copyFromRecentDay,
+  copyFromRecentWeek,
   type AssignableRow,
   type TimeEntryListItem,
 } from '@/features/time/api'
@@ -37,6 +48,35 @@ type ViewMode = 'day' | 'week' | 'calendar'
 
 function cellKey(projectTaskId: string, date: string) {
   return `${projectTaskId}\t${date}`
+}
+
+function buildEntriesByCell(items: TimeEntryListItem[]): Map<string, TimeEntryListItem[]> {
+  const m = new Map<string, TimeEntryListItem[]>()
+  for (const e of items) {
+    const k = cellKey(e.projectTaskId, e.date)
+    const arr = m.get(k) ?? []
+    arr.push(e)
+    m.set(k, arr)
+  }
+  for (const arr of m.values()) {
+    arr.sort((a, b) => a.id.localeCompare(b.id))
+  }
+  return m
+}
+
+function cellHoursSum(entries: TimeEntryListItem[] | undefined): number {
+  return (entries ?? []).reduce((a, e) => a + (e.hours || 0), 0)
+}
+
+type ActiveTimerState = {
+  id: string
+  projectTaskId: string
+  date: string
+  startedAt: number
+  notes?: string
+  clientName: string
+  projectName: string
+  taskName: string
 }
 
 function formatShortWeekdayDate(ymd: string): string {
@@ -62,14 +102,30 @@ export function TimePage() {
   const [cellDraft, setCellDraft] = useState<Record<string, string>>({})
   const [trackOpen, setTrackOpen] = useState(false)
   const [editing, setEditing] = useState<TimeEntryListItem | null>(null)
-  const [inlineTip, setInlineTip] = useState('')
+  const [activeTimer, setActiveTimer] = useState<ActiveTimerState | null>(null)
+  const [timerTick, setTimerTick] = useState(0)
+  const activeTimerRef = useRef<ActiveTimerState | null>(null)
   const [approvalConfirm, setApprovalConfirm] = useState<null | 'submit' | 'withdraw'>(null)
   const [weekExtraRowIds, setWeekExtraRowIds] = useState<string[]>([])
   const [addRowOpen, setAddRowOpen] = useState(false)
   const [weekRowNotesForProjectTaskId, setWeekRowNotesForProjectTaskId] = useState<string | null>(null)
-  const [weekCellNote, setWeekCellNote] = useState<{ projectTaskId: string; date: string } | null>(null)
-  /** After manager withdraws, show "Resubmit" label until week changes or another submit */
-  const [useResubmitLabel, setUseResubmitLabel] = useState(false)
+  const [weekCellNoteTarget, setWeekCellNoteTarget] = useState<{
+    ymd: string
+    entry: TimeEntryListItem | null
+  } | null>(null)
+  const [copyRecentFeedback, setCopyRecentFeedback] = useState<string | null>(null)
+  useEffect(() => {
+    activeTimerRef.current = activeTimer
+  }, [activeTimer])
+  useEffect(() => {
+    if (!activeTimer) return
+    const id = window.setInterval(() => setTimerTick((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [activeTimer])
+  const timerElapsedLabel = useMemo(() => {
+    if (!activeTimer) return null
+    return formatElapsedMs(Date.now() - activeTimer.startedAt)
+  }, [activeTimer, timerTick])
 
   const { data: org } = useQuery({
     queryKey: ['organization', 'context'],
@@ -82,6 +138,12 @@ export function TimePage() {
   const { data: assignable } = useQuery({
     queryKey: ['time-entries', 'assignable'],
     queryFn: listAssignableTimeRows,
+  })
+
+  const { data: trackTimeOptions, isLoading: trackTimeOptionsLoading } = useQuery({
+    queryKey: ['time-entries', 'track-time-options'],
+    queryFn: listTrackTimeOptions,
+    enabled: trackOpen,
   })
 
   const listWeekKey = useMemo(() => {
@@ -97,6 +159,15 @@ export function TimePage() {
       }),
   })
 
+  useEffect(() => {
+    setCopyRecentFeedback(null)
+  }, [listWeekKey])
+
+  const { data: activeTimerDb } = useQuery({
+    queryKey: ['time-entries', 'timer', 'active'],
+    queryFn: getActiveTimeEntryTimer,
+  })
+
   const errMsg =
     listError instanceof ApiError
       ? listError.message
@@ -104,14 +175,27 @@ export function TimePage() {
         ? 'Failed to load timesheet.'
         : null
 
-  const byCell = useMemo(() => {
-    const m = new Map<string, TimeEntryListItem>()
-    if (!list) return m
-    for (const e of list.items) {
-      m.set(cellKey(e.projectTaskId, e.date), e)
+  const entriesByCell = useMemo(
+    () => (list ? buildEntriesByCell(list.items) : new Map<string, TimeEntryListItem[]>()),
+    [list],
+  )
+
+  useEffect(() => {
+    const t = activeTimerDb?.timer
+    if (!t) return
+    const next: ActiveTimerState = {
+      id: t.id,
+      projectTaskId: t.projectTaskId,
+      date: t.date,
+      startedAt: new Date(t.startedAt).getTime(),
+      notes: t.notes ?? undefined,
+      clientName: t.clientName,
+      projectName: t.projectName,
+      taskName: t.taskName,
     }
-    return m
-  }, [list])
+    setActiveTimer(next)
+    activeTimerRef.current = next
+  }, [activeTimerDb?.timer])
 
   const dayKeys = useMemo(() => {
     if (!list?.range?.from) {
@@ -153,53 +237,46 @@ export function TimePage() {
     [list],
   )
 
-  const weekAllApproved = useMemo(() => {
-    if (!list?.items?.length) return false
-    return list.items.every((e) => e.isLocked && e.status === 'APPROVED')
-  }, [list])
-
-  const hasPendingApproval = useMemo(() => {
-    if (!list?.items || weekAllApproved) return false
-    return list.items.some((e) => e.isLocked && e.status === 'SUBMITTED')
-  }, [list, weekAllApproved])
-
-  const dayLockedByYmd = useMemo(() => {
-    const m: Record<string, boolean> = {}
-    if (!list || !dayKeys.length) return m
-    for (const d of dayKeys) {
-      const es = list.items.filter((e) => e.date === d)
-      m[d] = es.length > 0 && es.every((e) => e.isLocked)
-    }
-    return m
-  }, [list, dayKeys])
-
-  const hasAnyLockedInWeek = useMemo(
-    () => (list?.items?.some((e) => e.isLocked) ?? false),
-    [list],
+  /** 以 list.weekApproval（approvals 表）为准：有且 PENDING/… 时编辑；有且 APPROVED 时整周只读、不提交、可 Withdraw。 */
+  const weekLockedByApproval = useMemo(
+    () => list?.weekApproval?.status === 'APPROVED',
+    [list?.weekApproval?.status],
   )
 
-  const canWithdrawWeek = elevated && hasAnyLockedInWeek
+  const hasWeekApprovalPending = useMemo(
+    () => list?.weekApproval?.status === 'PENDING',
+    [list?.weekApproval?.status],
+  )
+
+  const weekGridEditable = !weekLockedByApproval
+
+  /** 与整周是否被审批锁定一致（不按「单日是否全为 APPROVED 行」推断）。 */
+  const dayLockedByYmd = useMemo(() => {
+    const m: Record<string, boolean> = {}
+    for (const d of dayKeys) {
+      m[d] = weekLockedByApproval
+    }
+    return m
+  }, [dayKeys, weekLockedByApproval])
 
   const canSubmitForApproval = useMemo(() => {
     if (!list?.items) {
       return false
     }
-    if (weekAllApproved) {
-      return false
-    }
-    if (hasPendingApproval) {
+    if (weekLockedByApproval) {
       return false
     }
     if (listWeekTotal <= 0) {
       return false
     }
-    return list.items.some((e) => !e.isLocked)
-  }, [list, weekAllApproved, hasPendingApproval, listWeekTotal])
+    return true
+  }, [list, weekLockedByApproval, listWeekTotal])
 
-  const showTimerTip = (msg: string) => {
-    setInlineTip(msg)
-    void window.setTimeout(() => setInlineTip(''), 5000)
-  }
+  const showWithdrawWeekAction = useMemo(
+    () => elevated && weekLockedByApproval,
+    [elevated, weekLockedByApproval],
+  )
+  const showSubmitWeekForApproval = canSubmitForApproval
 
   const invalidate = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['time-entries'] })
@@ -221,7 +298,6 @@ export function TimePage() {
   const doSubmitWeek = useMutation({
     mutationFn: (weekOf: string) => submitTimeWeek(weekOf),
     onSuccess: () => {
-      setUseResubmitLabel(false)
       setApprovalConfirm(null)
       invalidate()
     },
@@ -229,25 +305,107 @@ export function TimePage() {
   const doWithdrawWeek = useMutation({
     mutationFn: (weekOf: string) => withdrawTimeWeek(weekOf),
     onSuccess: () => {
-      setUseResubmitLabel(true)
       setApprovalConfirm(null)
       invalidate()
     },
   })
+  const doCopyFromRecent = useMutation({
+    mutationFn: (ymd: string) => copyFromRecentDay(ymd),
+    onSuccess: (res) => {
+      invalidate()
+      setCopyRecentFeedback(res.message ? res.message : null)
+    },
+    onError: (e) => {
+      setCopyRecentFeedback(e instanceof ApiError ? e.message : 'Copy failed.')
+    },
+  })
+  const doCopyFromRecentWeek = useMutation({
+    mutationFn: (weekOf: string) => copyFromRecentWeek(weekOf),
+    onSuccess: (res) => {
+      invalidate()
+      setCopyRecentFeedback(res.message ? res.message : null)
+    },
+    onError: (e) => {
+      setCopyRecentFeedback(e instanceof ApiError ? e.message : 'Copy failed.')
+    },
+  })
+
+  const stopRunningTimer = useCallback(async () => {
+    const t = activeTimerRef.current
+    if (!t) {
+      return
+    }
+    try {
+      await stopTimeEntryTimer(t.id)
+      invalidate()
+    } finally {
+      setActiveTimer(null)
+      activeTimerRef.current = null
+    }
+  }, [invalidate])
+
+  const handleStartTimerFromModal = useCallback(
+    async (payload: {
+      projectTaskId: string
+      date: string
+      notes?: string
+      clientName: string
+      projectName: string
+      taskName: string
+    }) => {
+      if (weekLockedByApproval) {
+        return
+      }
+      await stopRunningTimer()
+      const res = await startTimeEntryTimer({
+        projectTaskId: payload.projectTaskId,
+        date: payload.date,
+        notes: payload.notes,
+      })
+      const next: ActiveTimerState = {
+        id: res.timer.id,
+        projectTaskId: res.timer.projectTaskId,
+        date: res.timer.date,
+        startedAt: new Date(res.timer.startedAt).getTime(),
+        notes: res.timer.notes ?? undefined,
+        clientName: res.timer.clientName,
+        projectName: res.timer.projectName,
+        taskName: res.timer.taskName,
+      }
+      setActiveTimer(next)
+      activeTimerRef.current = next
+      setTrackOpen(false)
+    },
+    [stopRunningTimer, weekLockedByApproval],
+  )
+
+  const handleStopTimer = useCallback(() => {
+    void stopRunningTimer()
+  }, [stopRunningTimer])
 
   const applyCellBlur = useCallback(
     async (projectTaskId: string, date: string, raw: string) => {
+      if (weekLockedByApproval) {
+        return
+      }
       const k = cellKey(projectTaskId, date)
-      const prev = byCell.get(k)
+      const listForCell = entriesByCell.get(k) ?? []
+      const currentSum = cellHoursSum(listForCell)
       const h = parseFloat(String(raw).replace(/,/g, ''))
       const hours = Number.isNaN(h) || h < 0 ? 0 : Math.min(24, h)
-      if (prev) {
-        if (prev.isLocked) {
-          if (raw !== cellDraft[k]) {
-            setCellDraft((c) => ({ ...c, [k]: String(prev.hours) }))
-          }
-          return
+      if (listForCell.some((e) => e.isLocked)) {
+        if (raw !== String(currentSum) && cellDraft[k] !== undefined) {
+          setCellDraft((c) => ({ ...c, [k]: String(currentSum) }))
         }
+        return
+      }
+      if (listForCell.length > 1) {
+        if (Math.abs(hours - currentSum) < 0.0001) return
+        setCellDraft((c) => ({ ...c, [k]: String(currentSum) }))
+        return
+      }
+      if (listForCell.length === 1) {
+        const prev = listForCell[0]!
         if (hours === 0) {
           await doDelete.mutateAsync(prev.id)
           setCellDraft((c) => {
@@ -257,7 +415,7 @@ export function TimePage() {
           })
           return
         }
-        if (hours === prev.hours) return
+        if (Math.abs(hours - (prev.hours || 0)) < 0.0001) return
         await saveUpdate.mutateAsync({ id: prev.id, body: { hours } })
         return
       }
@@ -265,7 +423,7 @@ export function TimePage() {
         await saveCreate.mutateAsync({ projectTaskId, date, hours })
       }
     },
-    [byCell, cellDraft, doDelete, saveCreate, saveUpdate],
+    [entriesByCell, cellDraft, doDelete, saveCreate, saveUpdate, weekLockedByApproval],
   )
 
   const onNavSingleDay = (d: 1 | -1) => {
@@ -287,6 +445,12 @@ export function TimePage() {
     hours: number
     notes?: string
   }) => {
+    if (weekLockedByApproval) {
+      setTrackOpen(false)
+      setEditing(null)
+      return
+    }
+    await stopRunningTimer()
     if (editing) {
       if (payload.hours === 0) {
         await doDelete.mutateAsync(editing.id)
@@ -306,6 +470,20 @@ export function TimePage() {
     setEditing(null)
   }
 
+  const onTrackDelete = useCallback(async () => {
+    if (!editing) {
+      return
+    }
+    if (weekLockedByApproval) {
+      setTrackOpen(false)
+      setEditing(null)
+      return
+    }
+    await doDelete.mutateAsync(editing.id)
+    setTrackOpen(false)
+    setEditing(null)
+  }, [editing, doDelete, weekLockedByApproval])
+
   const getWeekOfForApi = useCallback((): string => {
     if (list?.range?.from) {
       return new Date(list.range.from).toISOString().slice(0, 10)
@@ -313,8 +491,44 @@ export function TimePage() {
     return view === 'day' ? daySelectedYmd : weekListAnchorYmd
   }, [list, view, daySelectedYmd, weekListAnchorYmd])
 
-  /** Week is editable: not fully approved, not in “submitted, pending manager” state. */
-  const weekGridEditable = !weekAllApproved && !hasPendingApproval
+  const copyTargetYmd = useMemo(() => {
+    const t = todayUtcYmd()
+    if (view === 'day') {
+      return daySelectedYmd
+    }
+    if (dayKeys.length && dayKeys.includes(t)) {
+      return t
+    }
+    return dayKeys[0] ?? t
+  }, [view, daySelectedYmd, dayKeys])
+
+  const runCopyFromRecent = useCallback(() => {
+    setCopyRecentFeedback(null)
+    if (view === 'week') {
+      void doCopyFromRecentWeek.mutateAsync(getWeekOfForApi())
+    } else if (view === 'day') {
+      void doCopyFromRecent.mutateAsync(copyTargetYmd)
+    }
+  }, [view, doCopyFromRecent, doCopyFromRecentWeek, getWeekOfForApi, copyTargetYmd])
+
+  const copyFromRecentProps = useMemo(
+    () => ({
+      onClick: runCopyFromRecent,
+      disabled: !list || listLoading,
+      loading: doCopyFromRecent.isPending || doCopyFromRecentWeek.isPending,
+      feedback: copyRecentFeedback,
+      label: view === 'day' ? 'Copy from most recent day' : 'Copy from previous week in month',
+    }),
+    [
+      runCopyFromRecent,
+      list,
+      listLoading,
+      doCopyFromRecent.isPending,
+      doCopyFromRecentWeek.isPending,
+      copyRecentFeedback,
+      view,
+    ],
+  )
 
   const removeWeekRow = useCallback(
     async (projectTaskId: string) => {
@@ -322,14 +536,16 @@ export function TimePage() {
         return
       }
       for (const d of dayKeys) {
-        const e = byCell.get(cellKey(projectTaskId, d))
-        if (e && !e.isLocked) {
-          await doDelete.mutateAsync(e.id)
+        const list = entriesByCell.get(cellKey(projectTaskId, d)) ?? []
+        for (const e of list) {
+          if (!e.isLocked) {
+            await doDelete.mutateAsync(e.id)
+          }
         }
       }
       setWeekExtraRowIds((ids) => ids.filter((id) => id !== projectTaskId))
     },
-    [weekGridEditable, dayKeys, byCell, doDelete],
+    [weekGridEditable, dayKeys, entriesByCell, doDelete],
   )
 
   const onViewToWeek = () => {
@@ -379,14 +595,15 @@ export function TimePage() {
     }
     const out: { date: string; dateLabel: string; entry: TimeEntryListItem }[] = []
     for (const d of dayKeys) {
-      const e = byCell.get(cellKey(r.projectTaskId, d))
+      const list = entriesByCell.get(cellKey(r.projectTaskId, d)) ?? []
+      const e = list.find((x) => (x.hours || 0) > 0) ?? list[0]
       if (!e || !e.hours || e.hours <= 0) {
         continue
       }
       out.push({ date: d, dateLabel: formatShortWeekdayDate(d), entry: e })
     }
     return out
-  }, [weekRowNotesForProjectTaskId, displayedWeekRows, dayKeys, byCell])
+  }, [weekRowNotesForProjectTaskId, displayedWeekRows, dayKeys, entriesByCell])
 
   const weekRowNotesRowMeta = useMemo(() => {
     if (!weekRowNotesForProjectTaskId) {
@@ -401,36 +618,58 @@ export function TimePage() {
     [displayedWeekRows],
   )
 
-  /** + Add row: only disabled when the whole week is approved (read-only). */
-  const addRowDisabled = weekAllApproved
+  /** + Add row: only when the week is editable (not approved / not pending approval). */
+  const addRowDisabled = !weekGridEditable
 
   const weekScopeYmd =
     view === 'week' || view === 'calendar' ? weekListAnchorYmd : startOfIsoWeekYmd(daySelectedYmd)
   useEffect(() => {
     setWeekExtraRowIds([])
-    setUseResubmitLabel(false)
   }, [weekScopeYmd])
   useEffect(() => {
     setApprovalConfirm(null)
   }, [view, weekScopeYmd])
 
-  const submitWeekButtonLabel = useResubmitLabel
+  useEffect(() => {
+    if (!weekLockedByApproval) {
+      return
+    }
+    if (!activeTimer) {
+      return
+    }
+    void stopRunningTimer()
+  }, [weekLockedByApproval, activeTimer, stopRunningTimer])
+
+  useEffect(() => {
+    if (weekLockedByApproval) {
+      setTrackOpen(false)
+      setEditing(null)
+    }
+  }, [weekLockedByApproval])
+
+  const submitWeekButtonLabel = hasWeekApprovalPending
     ? 'Resubmit week for approval'
     : 'Submit week for approval'
 
   const modalYmd = editing?.date ?? daySelectedYmd
 
+  const activeTimerRowForDay = useMemo(() => {
+    if (weekLockedByApproval || !activeTimer || activeTimer.date !== daySelectedYmd) {
+      return null
+    }
+    if (timerElapsedLabel == null) {
+      return null
+    }
+    return {
+      clientName: activeTimer.clientName,
+      projectName: activeTimer.projectName,
+      taskName: activeTimer.taskName,
+      elapsedLabel: timerElapsedLabel,
+    }
+  }, [weekLockedByApproval, activeTimer, daySelectedYmd, timerElapsedLabel])
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      {inlineTip ? (
-        <p
-          className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-foreground"
-          role="status"
-        >
-          {inlineTip}
-        </p>
-      ) : null}
-
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Timesheet</h1>
@@ -502,20 +741,13 @@ export function TimePage() {
 
       {(view === 'day' || view === 'week' || view === 'calendar') && approvalConfirm === 'submit' && (
         <SubmitWeekConfirmBanner
-          resubmit={useResubmitLabel}
+          className="w-full min-w-0 max-w-5xl"
+          resubmit={hasWeekApprovalPending}
           onCancel={() => setApprovalConfirm(null)}
           onConfirm={() => void doSubmitWeek.mutateAsync(getWeekOfForApi())}
           loading={doSubmitWeek.isPending}
         />
       )}
-      {(view === 'day' || view === 'week' || view === 'calendar') && approvalConfirm === 'withdraw' && canWithdrawWeek && (
-        <WithdrawWeekConfirmBanner
-          onCancel={() => setApprovalConfirm(null)}
-          onConfirm={() => void doWithdrawWeek.mutateAsync(getWeekOfForApi())}
-          loading={doWithdrawWeek.isPending}
-        />
-      )}
-
       {view === 'day' && (
         <TimesheetDayPanel
           listLoading={listLoading}
@@ -525,27 +757,47 @@ export function TimePage() {
           onNavDay={onNavSingleDay}
           onReturnToToday={onReturnToToday}
           onOpenTrack={() => {
+            if (weekLockedByApproval) {
+              return
+            }
             setEditing(null)
             setTrackOpen(true)
           }}
           onRequestSubmitForApproval={() => setApprovalConfirm('submit')}
           onRequestWithdraw={() => setApprovalConfirm('withdraw')}
+          withdrawConfirm={
+            approvalConfirm === 'withdraw' ? (
+              <WithdrawWeekConfirmBanner
+                className="w-full min-w-0"
+                onCancel={() => setApprovalConfirm(null)}
+                onConfirm={() => void doWithdrawWeek.mutateAsync(getWeekOfForApi())}
+                loading={doWithdrawWeek.isPending}
+              />
+            ) : null
+          }
           submitButtonLabel={submitWeekButtonLabel}
-          showSubmitForApproval={canSubmitForApproval}
-          canWithdraw={canWithdrawWeek}
+          showSubmitForApproval={showSubmitWeekForApproval}
+          canWithdraw={showWithdrawWeekAction}
+          hideSubmitTrigger={approvalConfirm === 'submit'}
+          hideWithdrawTrigger={approvalConfirm === 'withdraw'}
           submitLoading={doSubmitWeek.isPending}
           withdrawLoading={doWithdrawWeek.isPending}
           dailyTotals={dailyTotals}
           weekTotal={listWeekTotal}
           dayEntries={dayEntries}
-          weekAllApproved={weekAllApproved}
-          hasPendingApproval={hasPendingApproval}
+          weekAllApproved={weekLockedByApproval}
+          hasPendingApproval={hasWeekApprovalPending}
           dayLockedByYmd={dayLockedByYmd}
           onEditEntry={(e: TimeEntryListItem) => {
+            if (weekLockedByApproval || e.isLocked) {
+              return
+            }
             setEditing(e)
             setTrackOpen(true)
           }}
-          onTimerPlaceholder={showTimerTip}
+          activeTimerRow={activeTimerRowForDay}
+          onStopTimer={handleStopTimer}
+          copyFromRecent={weekLockedByApproval ? undefined : copyFromRecentProps}
         />
       )}
 
@@ -559,13 +811,19 @@ export function TimePage() {
           onReturnToThisWeek={onReturnToThisWeek}
           statusBadges={
             <>
-              {hasPendingApproval && !weekAllApproved && (
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
+              {hasWeekApprovalPending && !weekLockedByApproval && (
+                <span
+                  className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800"
+                  role="status"
+                >
                   Pending approval
                 </span>
               )}
-              {weekAllApproved && (
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+              {weekLockedByApproval && (
+                <span
+                  className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                  role="status"
+                >
                   Approved
                 </span>
               )}
@@ -595,13 +853,19 @@ export function TimePage() {
           onReturnToThisWeek={onReturnToThisWeek}
           statusBadges={
             <>
-              {hasPendingApproval && !weekAllApproved && (
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
+              {hasWeekApprovalPending && !weekLockedByApproval && (
+                <span
+                  className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800"
+                  role="status"
+                >
                   Pending approval
                 </span>
               )}
-              {weekAllApproved && (
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+              {weekLockedByApproval && (
+                <span
+                  className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                  role="status"
+                >
                   Approved
                 </span>
               )}
@@ -623,7 +887,7 @@ export function TimePage() {
                   {dayKeys.map((d) => {
                     const wd = new Date(`${d}T12:00:00.000Z`)
                     const wdl = wd.toLocaleDateString('en-GB', { weekday: 'short' })
-                    const dLocked = weekAllApproved || dayLockedByYmd[d]
+                    const dLocked = weekLockedByApproval || dayLockedByYmd[d]
                     return (
                       <th
                         key={d}
@@ -654,12 +918,16 @@ export function TimePage() {
                 ) : null}
                 {displayedWeekRows.map((r) => {
                   const rowSum = dayKeys.reduce((acc, d) => {
-                    const e = byCell.get(cellKey(r.projectTaskId, d))
-                    return acc + (e?.hours && !Number.isNaN(e.hours) ? e.hours : 0)
+                    const list = entriesByCell.get(cellKey(r.projectTaskId, d)) ?? []
+                    return acc + cellHoursSum(list)
                   }, 0)
                   const canDel =
                     weekGridEditable &&
-                    dayKeys.every((d) => !byCell.get(cellKey(r.projectTaskId, d))?.isLocked)
+                    dayKeys.every((d) => {
+                      const list = entriesByCell.get(cellKey(r.projectTaskId, d)) ?? []
+                      if (list.length === 0) return true
+                      return list.every((e) => !e.isLocked)
+                    })
                   return (
                     <tr key={r.projectTaskId} className="hover:bg-muted/10">
                       <td className="border-b border-r border-border px-2 py-1.5 align-top text-sm text-foreground">
@@ -669,7 +937,8 @@ export function TimePage() {
                               type="button"
                               size="sm"
                               variant="outline"
-                              className="h-7 gap-1 px-2 text-xs"
+                              className="h-7 gap-1 border-primary/30 px-2 text-xs"
+                              disabled={weekLockedByApproval}
                               onClick={() => setWeekRowNotesForProjectTaskId(r.projectTaskId)}
                               title="Notes for days with time (this row)"
                             >
@@ -684,39 +953,65 @@ export function TimePage() {
                         </div>
                       </td>
                       {dayKeys.map((d) => {
-                        const e = byCell.get(cellKey(r.projectTaskId, d))
                         const k = cellKey(r.projectTaskId, d)
+                        const list = entriesByCell.get(k) ?? []
+                        const sum = cellHoursSum(list)
+                        const first = list[0]
+                        const multi = list.length > 1
+                        const cellLocked = list.some((x) => x.isLocked)
                         const val =
-                          (cellDraft[k] !== undefined ? cellDraft[k] : e ? String(e.hours) : '') ?? ''
+                          (cellDraft[k] !== undefined ? cellDraft[k] : list.length ? String(sum) : '') ?? ''
                         return (
                           <td key={d} className="border-b border-l border-border p-0 align-top">
-                            <div className="flex flex-col gap-0.5 p-0.5">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                className={cn(
-                                  'h-8 w-full min-w-0 rounded border-0 border-transparent bg-transparent text-center text-sm tabular-nums',
-                                  'focus:border-transparent focus:bg-muted/30 focus:ring-0 focus:outline-none',
-                                  e?.isLocked ? 'cursor-not-allowed opacity-60' : '',
-                                  e?.status === 'APPROVED' && 'text-emerald-800',
-                                )}
-                                disabled={Boolean(e?.isLocked) || saveCreate.isPending}
-                                value={val}
-                                onChange={(ev) => setCellDraft((c) => ({ ...c, [k]: ev.target.value }))}
-                                onBlur={(ev) => {
-                                  void applyCellBlur(r.projectTaskId, d, ev.target.value.trim())
-                                }}
-                                title={e?.isLocked ? 'Locked' : e?.status === 'SUBMITTED' ? 'Submitted' : ''}
-                              />
-                              <Button
-                                type="button"
-                                variant="link"
-                                className="h-5 min-h-0 shrink-0 px-0 py-0 text-[10px] leading-tight text-muted-foreground hover:text-foreground"
-                                onClick={() => setWeekCellNote({ projectTaskId: r.projectTaskId, date: d })}
-                                title="Note for this day"
-                              >
-                                Note
-                              </Button>
+                            <div className="p-0.5">
+                              <div className="flex items-center gap-0.5">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  className={cn(
+                                    'h-8 w-full min-w-0 rounded border-0 border-transparent bg-transparent text-center text-sm tabular-nums',
+                                    'focus:border-transparent focus:bg-muted/30 focus:ring-0 focus:outline-none',
+                                    cellLocked ? 'cursor-not-allowed opacity-60' : '',
+                                    first?.status === 'APPROVED' && 'text-emerald-800',
+                                  )}
+                                  disabled={cellLocked || weekLockedByApproval || saveCreate.isPending || multi}
+                                  value={val}
+                                  onChange={(ev) => setCellDraft((c) => ({ ...c, [k]: ev.target.value }))}
+                                  onBlur={(ev) => {
+                                    void applyCellBlur(r.projectTaskId, d, ev.target.value.trim())
+                                  }}
+                                  title={
+                                    multi
+                                      ? 'This day has multiple entries; use Day view to change each one.'
+                                      : first?.isLocked
+                                        ? 'This row is approved; edit is blocked'
+                                        : first?.status === 'SUBMITTED'
+                                          ? 'Hours in this week’s timesheet (submit/resubmit is once per week, not per line)'
+                                          : 'Hours in this week’s timesheet'
+                                  }
+                                />
+                                <Button
+                                  type="button"
+                                  size="icon-sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                                  disabled={weekLockedByApproval || multi}
+                                  onClick={() => {
+                                    const entry = list.find((x) => (x.hours || 0) > 0) ?? list[0] ?? null
+                                    setWeekCellNoteTarget({ ymd: d, entry })
+                                  }}
+                                  title={
+                                    multi
+                                      ? 'This day has multiple entries; use Day view to change each one.'
+                                      : first?.isLocked
+                                        ? 'This row is approved; edit is blocked'
+                                        : 'Note'
+                                  }
+                                  aria-label="Note"
+                                >
+                                  <StickyNote className="size-4" aria-hidden />
+                                </Button>
+                              </div>
                             </div>
                           </td>
                         )
@@ -761,35 +1056,71 @@ export function TimePage() {
               </tbody>
             </table>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={addRowDisabled}
-              onClick={() => setAddRowOpen(true)}
-            >
-              + Add row
-            </Button>
-            <div className="flex flex-wrap items-end justify-end gap-2 sm:ml-auto">
-              {canSubmitForApproval && !weekAllApproved && (
-                <Button
-                  type="button"
-                  className="bg-emerald-600 text-white hover:bg-emerald-700"
-                  onClick={() => setApprovalConfirm('submit')}
-                  disabled={doSubmitWeek.isPending}
-                >
-                  {submitWeekButtonLabel}
-                </Button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col items-start gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={addRowDisabled}
+                onClick={() => setAddRowOpen(true)}
+              >
+                + Add row
+              </Button>
+              {!weekLockedByApproval && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-muted-foreground"
+                    onClick={copyFromRecentProps.onClick}
+                    disabled={copyFromRecentProps.disabled || copyFromRecentProps.loading}
+                  >
+                    {copyFromRecentProps.loading ? 'Copying…' : copyFromRecentProps.label}
+                  </Button>
+                  {copyFromRecentProps.feedback ? (
+                    <p className="max-w-[min(100%,28rem)] text-xs text-muted-foreground">
+                      {copyFromRecentProps.feedback}
+                    </p>
+                  ) : null}
+                </>
               )}
-              {canWithdrawWeek && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setApprovalConfirm('withdraw')}
-                  disabled={doWithdrawWeek.isPending}
-                >
-                  Withdraw approval
-                </Button>
+            </div>
+            <div className="ml-auto flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end sm:w-auto">
+              {showSubmitWeekForApproval && approvalConfirm !== 'submit' && (
+                <div className="flex w-full justify-end sm:w-auto">
+                  <Button
+                    type="button"
+                    className="w-auto shrink-0 bg-emerald-600 text-white hover:bg-emerald-700"
+                    onClick={() => setApprovalConfirm('submit')}
+                    disabled={doSubmitWeek.isPending}
+                  >
+                    {submitWeekButtonLabel}
+                  </Button>
+                </div>
+              )}
+              {showWithdrawWeekAction && (
+                <div className="flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end">
+                  {approvalConfirm !== 'withdraw' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-auto shrink-0"
+                      onClick={() => setApprovalConfirm('withdraw')}
+                      disabled={doWithdrawWeek.isPending}
+                    >
+                      Withdraw
+                    </Button>
+                  )}
+                  {approvalConfirm === 'withdraw' && (
+                    <WithdrawWeekConfirmBanner
+                      className="w-full min-w-0"
+                      onCancel={() => setApprovalConfirm(null)}
+                      onConfirm={() => void doWithdrawWeek.mutateAsync(getWeekOfForApi())}
+                      loading={doWithdrawWeek.isPending}
+                    />
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -804,37 +1135,59 @@ export function TimePage() {
             dailyTotals={dailyTotals}
             weekTotal={listWeekTotal}
             dayLockedByYmd={dayLockedByYmd}
-            weekAllApproved={weekAllApproved}
+            weekAllApproved={weekLockedByApproval}
+            weekGridEditable={weekGridEditable}
             onAddTime={(d) => {
+              if (weekLockedByApproval) {
+                return
+              }
               setDaySelectedYmd(d)
               setEditing(null)
               setTrackOpen(true)
             }}
             onEditEntry={(e) => {
+              if (weekLockedByApproval || e.isLocked) {
+                return
+              }
               setEditing(e)
               setTrackOpen(true)
             }}
           />
-          <div className="flex flex-wrap items-end justify-end gap-2">
-            {canSubmitForApproval && !weekAllApproved && (
-              <Button
-                type="button"
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={() => setApprovalConfirm('submit')}
-                disabled={doSubmitWeek.isPending}
-              >
-                {submitWeekButtonLabel}
-              </Button>
+          <div className="flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end sm:w-auto">
+            {showSubmitWeekForApproval && approvalConfirm !== 'submit' && (
+              <div className="flex w-full justify-end sm:w-auto">
+                <Button
+                  type="button"
+                  className="w-auto shrink-0 bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => setApprovalConfirm('submit')}
+                  disabled={doSubmitWeek.isPending}
+                >
+                  {submitWeekButtonLabel}
+                </Button>
+              </div>
             )}
-            {canWithdrawWeek && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setApprovalConfirm('withdraw')}
-                disabled={doWithdrawWeek.isPending}
-              >
-                Withdraw approval
-              </Button>
+            {showWithdrawWeekAction && (
+              <div className="flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end">
+                {approvalConfirm !== 'withdraw' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-auto shrink-0"
+                    onClick={() => setApprovalConfirm('withdraw')}
+                    disabled={doWithdrawWeek.isPending}
+                  >
+                    Withdraw
+                  </Button>
+                )}
+                {approvalConfirm === 'withdraw' && (
+                  <WithdrawWeekConfirmBanner
+                    className="w-full min-w-0"
+                    onCancel={() => setApprovalConfirm(null)}
+                    onConfirm={() => void doWithdrawWeek.mutateAsync(getWeekOfForApi())}
+                    loading={doWithdrawWeek.isPending}
+                  />
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -848,14 +1201,24 @@ export function TimePage() {
         }}
         dateLabel={modalDateLabel(modalYmd)}
         ymd={modalYmd}
-        assignable={assignableRows}
+        projects={trackTimeOptions?.projects ?? []}
+        optionsLoading={trackTimeOptionsLoading}
         editing={editing}
         isSubmitting={saveCreate.isPending || saveUpdate.isPending}
         onSave={onTrackSave}
-        onStartTimerRequest={() => {
-          showTimerTip(
-            'Background timer like Harvest is not connected. Enter your hours and use Save to record time.',
-          )
+        onStartTimer={handleStartTimerFromModal}
+        onDelete={editing && !editing.isLocked ? onTrackDelete : undefined}
+        isDeleting={doDelete.isPending}
+      />
+
+      <WeekCellNoteDialog
+        open={weekCellNoteTarget != null}
+        onClose={() => setWeekCellNoteTarget(null)}
+        dateLabel={weekCellNoteTarget ? formatShortWeekdayDate(weekCellNoteTarget.ymd) : ''}
+        entry={weekCellNoteTarget?.entry ?? null}
+        isSaving={saveUpdate.isPending}
+        onSave={async (entryId, notes) => {
+          await saveUpdate.mutateAsync({ id: entryId, body: { notes } })
         }}
       />
 
@@ -870,21 +1233,6 @@ export function TimePage() {
           for (const u of updates) {
             await saveUpdate.mutateAsync({ id: u.id, body: { notes: u.notes } })
           }
-        }}
-      />
-
-      <WeekCellNoteDialog
-        open={weekCellNote != null}
-        onClose={() => setWeekCellNote(null)}
-        dateLabel={weekCellNote ? formatLongDateEn(weekCellNote.date) : ''}
-        entry={
-          weekCellNote
-            ? (byCell.get(cellKey(weekCellNote.projectTaskId, weekCellNote.date)) ?? null)
-            : null
-        }
-        isSaving={saveUpdate.isPending}
-        onSave={async (id, notes) => {
-          await saveUpdate.mutateAsync({ id, body: { notes } })
         }}
       />
 

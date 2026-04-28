@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Calendar, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
   formatDecimalHoursAsClock,
   parseClockToDecimal,
 } from '@/features/time/time-format'
-import type { AssignableRow, TimeEntryListItem } from '@/features/time/api'
+import type { TimeEntryListItem, TrackTimeProjectOption } from '@/features/time/api'
+
+const primaryBtn =
+  'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary/30'
 
 type TrackTimeModalProps = {
   open: boolean
   onClose: () => void
-  /** 标题中的日期，长格式由外部传入 */
   dateLabel: string
   ymd: string
-  assignable: AssignableRow[]
+  /** 来自 `GET /time-entries/track-time-options`（projects 联 client 与 project_tasks） */
+  projects: TrackTimeProjectOption[]
+  optionsLoading: boolean
   editing: TimeEntryListItem | null
   isSubmitting: boolean
   onSave: (payload: {
@@ -23,88 +27,156 @@ type TrackTimeModalProps = {
     hours: number
     notes?: string
   }) => Promise<void>
-  /** 仅前端的「开始计时」占位，无后端时不调用 */
-  onStartTimerRequest?: (payload: {
+  onStartTimer?: (payload: {
     projectTaskId: string
     date: string
-    hours: number
     notes?: string
+    clientName: string
+    projectName: string
+    taskName: string
   }) => void
+  /** 仅编辑已解锁条目时可用 */
+  onDelete?: () => Promise<void>
+  isDeleting?: boolean
 }
+
+const selectClassName = cn(
+  'h-auto min-h-9 w-full rounded-md border border-border bg-white px-2 py-2 text-sm text-foreground',
+  'shadow-sm focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none',
+)
 
 export function TrackTimeModal({
   open,
   onClose,
   dateLabel,
   ymd,
-  assignable,
+  projects,
+  optionsLoading,
   editing,
   isSubmitting,
   onSave,
-  onStartTimerRequest,
+  onStartTimer,
+  onDelete,
+  isDeleting = false,
 }: TrackTimeModalProps) {
-  const [clientId, setClientId] = useState('')
+  const [projectId, setProjectId] = useState('')
   const [projectTaskId, setProjectTaskId] = useState('')
   const [timeStr, setTimeStr] = useState('0:00')
   const [notes, setNotes] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  const clients = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const r of assignable) {
-      m.set(r.clientId, r.clientName)
-    }
-    return [...m.entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'en'))
-  }, [assignable])
-
-  const rowsForClient = useMemo(
-    () => assignable.filter((r) => r.clientId === clientId),
-    [assignable, clientId],
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.projectId === projectId) ?? null,
+    [projects, projectId],
+  )
+  const selectedTask = useMemo(
+    () => selectedProject?.tasks.find((t) => t.projectTaskId === projectTaskId) ?? null,
+    [selectedProject, projectTaskId],
   )
 
+  const hoursDecimal = useMemo(() => parseClockToDecimal(timeStr), [timeStr])
+  const hasManualHours = hoursDecimal > 0.0001
+
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      return
+    }
+    setShowDeleteConfirm(false)
     if (editing) {
-      setClientId(editing.clientId)
+      setProjectId(editing.projectId)
       setProjectTaskId(editing.projectTaskId)
       setTimeStr(formatDecimalHoursAsClock(editing.hours))
       setNotes(editing.notes ?? '')
     } else {
-      const first = assignable[0]
-      setClientId(first?.clientId ?? '')
-      setProjectTaskId(first?.projectTaskId ?? '')
       setTimeStr('0:00')
       setNotes('')
     }
-  }, [open, editing, assignable])
+  }, [open, editing])
 
   useEffect(() => {
-    if (!open || editing) return
-    const forC = assignable.filter((r) => r.clientId === clientId)
-    setProjectTaskId((prev) => {
-      if (forC.some((r) => r.projectTaskId === prev)) return prev
-      return forC[0]?.projectTaskId ?? ''
+    if (!open || editing) {
+      return
+    }
+    if (projects.length === 0) {
+      setProjectId('')
+      setProjectTaskId('')
+      return
+    }
+    setProjectId((cur) => {
+      if (cur && projects.some((p) => p.projectId === cur)) {
+        return cur
+      }
+      return projects[0]!.projectId
     })
-  }, [open, clientId, assignable, editing])
+  }, [open, editing, projects])
+
+  useEffect(() => {
+    if (!open || editing) {
+      return
+    }
+    if (!projectId) {
+      return
+    }
+    const p = projects.find((x) => x.projectId === projectId)
+    if (!p) {
+      return
+    }
+    setProjectTaskId((cur) => {
+      if (cur && p.tasks.some((t) => t.projectTaskId === cur)) {
+        return cur
+      }
+      return p.tasks[0]?.projectTaskId ?? ''
+    })
+  }, [open, editing, projects, projectId])
 
   if (!open) {
     return null
   }
 
+  const handleProjectChange = (id: string) => {
+    setProjectId(id)
+    const p = projects.find((x) => x.projectId === id)
+    setProjectTaskId(p?.tasks[0]?.projectTaskId ?? '')
+  }
+
   const handleSave = async () => {
     const h = parseClockToDecimal(timeStr)
-    if (!clientId || !projectTaskId) {
+    if (!projectTaskId) {
+      return
+    }
+    if (!editing && h <= 0) {
       return
     }
     await onSave({ projectTaskId, date: ymd, hours: h, notes: notes.trim() || undefined })
   }
 
-  const handleStart = () => {
-    if (!onStartTimerRequest) return
-    const h = parseClockToDecimal(timeStr)
-    if (!clientId || !projectTaskId) return
-    onStartTimerRequest({ projectTaskId, date: ymd, hours: h, notes: notes.trim() || undefined })
+  const handleStartTimer = () => {
+    if (!onStartTimer || !projectTaskId || !selectedProject || !selectedTask) {
+      return
+    }
+    onStartTimer({
+      projectTaskId,
+      date: ymd,
+      notes: notes.trim() || undefined,
+      clientName: selectedProject.clientName,
+      projectName: selectedProject.name,
+      taskName: selectedTask.taskName,
+    })
+  }
+
+  const disabledInputs = optionsLoading || projects.length === 0
+  const canPickTask = Boolean(projectTaskId && selectedTask) && !disabledInputs
+  const canSaveNewWithHours = !editing && hasManualHours && canPickTask
+  const canUpdate = Boolean(editing) && canPickTask
+  const canShowDelete = Boolean(editing) && onDelete && !editing.isLocked
+  const busy = isSubmitting || isDeleting
+
+  const handleConfirmDelete = async () => {
+    if (!onDelete) {
+      return
+    }
+    await onDelete()
+    setShowDeleteConfirm(false)
   }
 
   return (
@@ -114,10 +186,10 @@ export function TrackTimeModal({
       aria-modal="true"
       aria-labelledby="track-time-title"
     >
-      <div className="w-full max-w-md rounded-lg border border-border bg-card p-0 shadow-lg">
+      <div className="w-full max-w-md overflow-hidden rounded-lg border border-border bg-card p-0 shadow-lg">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 id="track-time-title" className="text-base font-semibold text-foreground">
-            New time entry for {dateLabel}
+            {editing ? `Edit time entry · ${dateLabel}` : `New time entry for ${dateLabel}`}
           </h2>
           <Button type="button" size="icon-sm" variant="ghost" onClick={onClose} aria-label="Close">
             <X className="size-4" />
@@ -125,57 +197,52 @@ export function TrackTimeModal({
         </div>
         <div className="space-y-4 p-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="client">
-              Client
+            <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="track-project">
+              Project
             </label>
             <select
-              id="client"
-              className={cn(
-                'h-9 w-full rounded-md border border-border bg-white px-2 text-sm text-foreground',
-                'shadow-sm focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none',
-              )}
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              disabled={Boolean(editing)}
+              id="track-project"
+              className={selectClassName}
+              value={projectId}
+              onChange={(e) => handleProjectChange(e.target.value)}
+              disabled={Boolean(editing) || disabledInputs}
             >
-              {clients.length === 0 ? (
-                <option value="">— No clients —</option>
+              {optionsLoading ? (
+                <option value="">Loading projects…</option>
+              ) : projects.length === 0 ? (
+                <option value="">— No projects —</option>
               ) : (
-                clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
+                projects.map((p) => (
+                  <option key={p.projectId} value={p.projectId}>
+                    {p.clientName} — {p.name}
                   </option>
                 ))
               )}
             </select>
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="pt">
-              Project / task
+            <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="track-task">
+              Task
             </label>
             <select
-              id="pt"
-              className={cn(
-                'h-9 w-full rounded-md border border-border bg-white px-2 text-sm text-foreground',
-                'shadow-sm focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none',
-              )}
+              id="track-task"
+              className={selectClassName}
               value={projectTaskId}
               onChange={(e) => setProjectTaskId(e.target.value)}
-              disabled={Boolean(editing)}
+              disabled={Boolean(editing) || disabledInputs || !selectedProject}
             >
-              {!clientId || rowsForClient.length === 0 ? (
-                <option value="">{!clientId ? '— Select a client first —' : '— No project–task rows —'}</option>
+              {optionsLoading ? (
+                <option value="">Loading tasks…</option>
+              ) : !selectedProject || selectedProject.tasks.length === 0 ? (
+                <option value="">{!projectId ? '— Select a project first —' : '— No tasks —'}</option>
               ) : (
-                rowsForClient.map((r) => (
-                  <option key={r.projectTaskId} value={r.projectTaskId}>
-                    {r.projectName} / {r.taskName}
+                selectedProject.tasks.map((t) => (
+                  <option key={t.projectTaskId} value={t.projectTaskId}>
+                    {t.taskName}
                   </option>
                 ))
               )}
             </select>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Choose a client, then the project and task to log time against.
-            </p>
           </div>
           <div className="flex gap-4">
             <div className="min-w-0 flex-1">
@@ -209,42 +276,85 @@ export function TrackTimeModal({
               />
             </div>
           </div>
-          <div className="flex items-center justify-between border-t border-border/60 pt-2">
-            <p className="text-xs text-muted-foreground">Timer and calendar sync come later</p>
-            <a
-              href="#"
-              className="text-xs text-primary"
-              onClick={(e) => e.preventDefault()}
-            >
-              <span className="inline-flex items-center gap-1">
-                <Calendar className="size-3.5" />
-                Pull in a calendar event
-              </span>
-            </a>
+        </div>
+        {showDeleteConfirm && canShowDelete ? (
+          <div className="flex w-full min-w-0 flex-col gap-3 border-t border-border bg-card px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4 sm:py-3">
+            <p className="min-w-0 flex-1 break-words text-sm text-foreground sm:pr-2">
+              Permanently delete this time entry?
+            </p>
+            <div className="flex w-full shrink-0 flex-nowrap items-center justify-end gap-2 sm:w-auto">
+              <Button
+                type="button"
+                className="shrink-0 bg-destructive text-white hover:bg-destructive/90"
+                disabled={busy}
+                onClick={() => void handleConfirmDelete()}
+              >
+                Delete time entry
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="shrink-0 border-border bg-white"
+                disabled={busy}
+                onClick={() => setShowDeleteConfirm(false)}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-4 py-3">
-          <Button
-            type="button"
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
-            onClick={handleStart}
-            disabled={isSubmitting || !clientId || !projectTaskId}
-            title="Timer is not connected yet"
-          >
-            Start timer
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={isSubmitting || !clientId || !projectTaskId}
-            variant="secondary"
-          >
-            {editing ? 'Save' : 'Log time'}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
-            Cancel
-          </Button>
-        </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-3 sm:px-4">
+            <div className="min-w-0">
+              {canShowDelete ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto shrink-0 px-0 text-destructive hover:text-destructive/90"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  Delete
+                </Button>
+              ) : null}
+            </div>
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              {editing ? (
+                <Button
+                  type="button"
+                  className={primaryBtn}
+                  onClick={handleSave}
+                  disabled={busy || !canUpdate}
+                >
+                  Update entry
+                </Button>
+              ) : canSaveNewWithHours ? (
+                <Button
+                  type="button"
+                  className={primaryBtn}
+                  onClick={handleSave}
+                  disabled={busy || !canPickTask}
+                >
+                  Save entry
+                </Button>
+              ) : onStartTimer ? (
+                <Button
+                  type="button"
+                  className={primaryBtn}
+                  onClick={handleStartTimer}
+                  disabled={busy || !canPickTask}
+                >
+                  Start timer
+                </Button>
+              ) : (
+                <Button type="button" className={primaryBtn} disabled>
+                  Save entry
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

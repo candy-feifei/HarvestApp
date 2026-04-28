@@ -447,7 +447,9 @@ export class ExpensesService {
       where: { id },
       data: {
         name: dto.name,
-        isArchived: dto.isArchived,
+        ...(dto.isArchived !== undefined
+          ? { isArchived: dto.isArchived }
+          : {}),
         unitName: dto.unitName,
         unitPrice:
           dto.unitPrice === null

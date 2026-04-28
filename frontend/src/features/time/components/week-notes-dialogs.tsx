@@ -143,6 +143,131 @@ type WeekCellNoteDialogProps = {
   onSave: (entryId: string, notes: string) => void | Promise<void>
 }
 
+type WeekDayColumnNotesDialogProps = {
+  open: boolean
+  onClose: () => void
+  dateLabel: string
+  /** 该日所有 time entry；按日汇总编辑备注 */
+  entries: TimeEntryListItem[]
+  isSaving: boolean
+  onSave: (updates: { id: string; notes: string }[]) => void | Promise<void>
+}
+
+export function WeekDayColumnNotesDialog({
+  open,
+  onClose,
+  dateLabel,
+  entries,
+  isSaving,
+  onSave,
+}: WeekDayColumnNotesDialogProps) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    const m: Record<string, string> = {}
+    for (const e of entries) {
+      m[e.id] = e.notes ?? ''
+    }
+    setDrafts(m)
+  }, [open, entries])
+
+  if (!open) {
+    return null
+  }
+
+  const handleSave = async () => {
+    const updates: { id: string; notes: string }[] = []
+    for (const e of entries) {
+      const next = drafts[e.id] ?? ''
+      const prev = e.notes ?? ''
+      if (next !== prev) {
+        updates.push({ id: e.id, notes: next })
+      }
+    }
+    if (updates.length === 0) {
+      onClose()
+      return
+    }
+    await onSave(updates)
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="week-day-col-notes-title"
+    >
+      <div className="max-h-[min(90vh,32rem)] w-full max-w-md overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div>
+            <h2 id="week-day-col-notes-title" className="text-base font-semibold text-foreground">
+              Day notes
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">{dateLabel}</p>
+          </div>
+          <Button type="button" size="icon-sm" variant="ghost" onClick={onClose} aria-label="Close">
+            <X className="size-4" />
+          </Button>
+        </div>
+        <div className="max-h-[min(60vh,24rem)] space-y-4 overflow-y-auto p-4">
+          {entries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Log time for this day before adding notes.
+            </p>
+          ) : (
+            entries.map((e) => {
+              const locked = e.isLocked
+              const label = [e.clientName, e.projectName, e.taskName].filter(Boolean).join(' · ')
+              return (
+                <div key={e.id}>
+                  <label
+                    className="mb-1 block text-xs font-medium text-muted-foreground"
+                    htmlFor={`wdn-col-${e.id}`}
+                  >
+                    {label}
+                    {locked ? ' (locked)' : ''}
+                  </label>
+                  <textarea
+                    id={`wdn-col-${e.id}`}
+                    rows={2}
+                    disabled={locked}
+                    className={cn(
+                      'w-full resize-y rounded-md border border-border bg-white px-2 py-1.5 text-sm',
+                      'focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none',
+                      locked && 'cursor-not-allowed opacity-60',
+                    )}
+                    value={drafts[e.id] ?? ''}
+                    onChange={(ev) => setDrafts((prev) => ({ ...prev, [e.id]: ev.target.value }))}
+                    placeholder="Note for this line…"
+                  />
+                </div>
+              )
+            })
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-4 py-3">
+          <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            className="bg-emerald-600 text-white hover:bg-emerald-700"
+            onClick={() => void handleSave()}
+            disabled={isSaving || entries.length === 0}
+          >
+            Save notes
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function WeekCellNoteDialog({
   open,
   onClose,
