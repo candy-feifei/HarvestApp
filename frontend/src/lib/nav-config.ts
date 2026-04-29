@@ -9,7 +9,6 @@ import {
   FolderOpen,
   ListChecks,
   Settings2,
-  Shield,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -152,12 +151,5 @@ export const appFooterNavItems: AppNavItem[] = [
     to: '/settings',
     description: 'System and organization',
     icon: Settings2,
-  },
-  {
-    id: 'access',
-    title: 'Access',
-    to: '/access',
-    description: 'Roles and permissions',
-    icon: Shield,
   },
 ]

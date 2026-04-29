@@ -152,12 +152,6 @@ const ApprovalsPage = lazy(() =>
   })),
 )
 
-const AccessPage = lazy(() =>
-  import('@/features/access/pages/access-page').then((m) => ({
-    default: m.AccessPage,
-  })),
-)
-
 const SettingsPage = lazy(() =>
   import('@/features/settings/pages/settings-page').then((m) => ({
     default: m.SettingsPage,
@@ -175,7 +169,6 @@ const lazyModuleRoot = {
   estimates: EstimatesPage,
   approvals: ApprovalsPage,
   reports: ReportsPage,
-  access: AccessPage,
   settings: SettingsPage,
 } as const
 

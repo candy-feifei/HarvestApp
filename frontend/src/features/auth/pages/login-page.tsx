@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '@/lib/api/http'
 import { useAuth } from '@/lib/auth/auth-context'
@@ -32,7 +32,7 @@ export function LoginPage() {
     return <Navigate to={from} replace />
   }
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setLoading(true)
@@ -42,7 +42,9 @@ export function LoginPage() {
       navigate(from, { replace: true })
     } catch (err) {
       const message =
-        err instanceof ApiError ? err.message : '登录失败，请稍后重试'
+        err instanceof ApiError
+          ? err.message
+          : 'Sign in failed. Please try again.'
       setError(message)
     } finally {
       setLoading(false)
@@ -52,18 +54,19 @@ export function LoginPage() {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center bg-background p-6">
       <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6 shadow-sm">
-        <div className="space-y-1 text-center">
-          <h1 className="text-xl font-semibold tracking-tight">登录 HarvestApp</h1>
-          <p className="text-sm text-muted-foreground">
-            使用工作邮箱与密码。可先执行{' '}
-            <code className="rounded bg-muted px-1 text-xs">npx prisma db seed</code>{' '}
-            创建 demo@harvest.app / demo123
-          </p>
+        <div className="space-y-2 text-center">
+          <img
+            src="/chrona_header.png"
+            alt="Chrona"
+            className="mx-auto h-18 w-auto select-none"
+            draggable={false}
+          />
+          <h1 className="text-xl font-semibold tracking-tight">Sign in to Chrona</h1>
         </div>
         <form className="space-y-4" onSubmit={onSubmit}>
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="email">
-              邮箱
+              Email
             </label>
             <input
               id="email"
@@ -77,7 +80,7 @@ export function LoginPage() {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="password">
-              密码
+              Password
             </label>
             <input
               id="password"
@@ -93,7 +96,7 @@ export function LoginPage() {
                 to="/forgot-password"
                 className="text-primary underline-offset-4 hover:underline"
               >
-                忘记密码？
+                Forgot password?
               </Link>
             </p>
           </div>
@@ -103,43 +106,38 @@ export function LoginPage() {
             </p>
           ) : null}
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? '登录中…' : '登录'}
+            {loading ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>
         <p className="text-center text-xs text-muted-foreground">
-          登录即表示同意{' '}
+          By signing in, you agree to our{' '}
           <a
             href={termsUrl}
             target="_blank"
             rel="noreferrer"
             className="text-primary underline-offset-4 hover:underline"
           >
-            服务条款
+            Terms of Service
           </a>{' '}
-          与{' '}
+          and{' '}
           <a
             href={privacyUrl}
             target="_blank"
             rel="noreferrer"
             className="text-primary underline-offset-4 hover:underline"
           >
-            隐私政策
+            Privacy Policy
           </a>
-          。令牌存于 sessionStorage（关标签页即失效）
+          .
         </p>
         <p className="text-center text-sm text-muted-foreground">
-          没有账号？{' '}
+          Don&apos;t have an account?{' '}
           <Link
             to="/register"
             className="text-primary underline-offset-4 hover:underline"
           >
-            注册
+            Sign up
           </Link>
-        </p>
-        <p className="text-center text-sm">
-          <Button variant="link" asChild className="h-auto p-0">
-            <Link to="/">返回首页（未登录会再次跳转登录）</Link>
-          </Button>
         </p>
       </div>
     </div>

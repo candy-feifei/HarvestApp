@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronDown, LogOut, Timer } from 'lucide-react'
+import { ChevronDown, LogOut } from 'lucide-react'
 import {
   appFooterNavItems,
   appNavSections,
@@ -98,15 +98,17 @@ export function AppSidebar() {
         onClick={() => navigate('/')}
         className="flex h-[56px] cursor-pointer items-center gap-3 border-b border-border px-4 text-left transition-opacity hover:opacity-90"
       >
-        <div
-          className="flex size-9 items-center justify-center rounded-lg text-white shadow-sm"
-          style={{ backgroundColor: brand.primary }}
-        >
-          <Timer className="size-[18px]" strokeWidth={2} aria-hidden />
+        <div className="flex size-12 items-center justify-center rounded-lg">
+          <img
+            src="/chrona_logo.png"
+            alt="Chrona"
+            className="size-12 select-none object-contain"
+            draggable={false}
+          />
         </div>
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold tracking-tight text-foreground">
-            HarvestApp
+            Chrona
           </p>
           <p className="truncate text-xs text-muted-foreground">Time & projects</p>
         </div>
