@@ -1,22 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronDown, X } from 'lucide-react'
-import { Popover } from 'radix-ui'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { AssignableRow } from '@/features/time/api'
-
-type ProjectOption = {
-  projectId: string
-  projectName: string
-  clientId: string
-  clientName: string
-}
-
-type TaskOption = {
-  taskId: string
-  taskName: string
-  projectTaskId: string
-}
 
 type AddWeekRowModalProps = {
   open: boolean
@@ -26,6 +12,23 @@ type AddWeekRowModalProps = {
   onAdd: (projectTaskId: string) => void
 }
 
+type ProjectOption = {
+  projectId: string
+  projectName: string
+  clientName: string
+}
+
+type TaskOption = {
+  taskId: string
+  taskName: string
+  projectTaskId: string
+}
+
+const selectClassName = cn(
+  'h-auto min-h-9 w-full rounded-md border border-border bg-white px-2 py-2 text-sm text-foreground',
+  'shadow-sm focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none',
+)
+
 function uniqueProjects(rows: AssignableRow[]): ProjectOption[] {
   const m = new Map<string, ProjectOption>()
   for (const r of rows) {
@@ -33,7 +36,6 @@ function uniqueProjects(rows: AssignableRow[]): ProjectOption[] {
       m.set(r.projectId, {
         projectId: r.projectId,
         projectName: r.projectName,
-        clientId: r.clientId,
         clientName: r.clientName,
       })
     }
@@ -65,7 +67,7 @@ export function AddWeekRowModal({
   onAdd,
 }: AddWeekRowModalProps) {
   const [projectId, setProjectId] = useState('')
-  const [projectOpen, setProjectOpen] = useState(false)
+  const [projectTaskId, setProjectTaskId] = useState('')
 
   /** Rows not already on this week. */
   const available = useMemo(
@@ -74,39 +76,69 @@ export function AddWeekRowModal({
   )
 
   const projectOptions = useMemo(() => uniqueProjects(available), [available])
-  const selectedProject = useMemo(
-    () => projectOptions.find((p) => p.projectId === projectId),
-    [projectOptions, projectId],
+  const taskOptions = useMemo(
+    () => (projectId ? uniqueTasksForProject(available, projectId) : []),
+    [available, projectId],
   )
 
-  /** 同一项目多任务时，取当前周仍可添加的第一条（按任务名排序，与旧版下拉里首项一致） */
-  const projectTaskIdToAdd = useMemo(() => {
-    if (!projectId) {
-      return ''
+  const syncSelectionToAvailable = useCallback(() => {
+    if (projectOptions.length === 0) {
+      setProjectId('')
+      setProjectTaskId('')
+      return
     }
-    const tasks = uniqueTasksForProject(available, projectId)
-    return tasks[0]?.projectTaskId ?? ''
-  }, [available, projectId])
+    setProjectId((p) => {
+      const next =
+        p && projectOptions.some((x) => x.projectId === p) ? p : (projectOptions[0]?.projectId ?? '')
+      return next
+    })
+  }, [projectOptions])
 
   useEffect(() => {
     if (!open) {
       return
     }
-    setProjectId('')
-    setProjectOpen(false)
-  }, [open])
+    syncSelectionToAvailable()
+  }, [open, available, syncSelectionToAvailable])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    if (!projectId) {
+      setProjectTaskId('')
+      return
+    }
+    const tasks = uniqueTasksForProject(available, projectId)
+    setProjectTaskId((t) => {
+      if (t && tasks.some((x) => x.projectTaskId === t)) {
+        return t
+      }
+      return tasks[0]?.projectTaskId ?? ''
+    })
+  }, [open, projectId, available])
+
+  const onProjectChange = (nextProjectId: string) => {
+    setProjectId(nextProjectId)
+    const tasks = uniqueTasksForProject(available, nextProjectId)
+    setProjectTaskId(tasks[0]?.projectTaskId ?? '')
+  }
 
   if (!open) {
     return null
   }
 
   const handleAdd = () => {
-    if (!projectTaskIdToAdd) {
+    if (!projectTaskId) {
       return
     }
-    onAdd(projectTaskIdToAdd)
+    onAdd(projectTaskId)
     onClose()
   }
+
+  const noProjects = projectOptions.length === 0
+  const noTasksInProject = Boolean(projectId) && taskOptions.length === 0
+  const canSave = Boolean(projectTaskId) && !noProjects && !noTasksInProject
 
   return (
     <div
@@ -126,67 +158,61 @@ export function AddWeekRowModal({
         </div>
         <div className="space-y-4 p-4">
           <div>
-            <div className="mb-1.5 text-sm font-medium text-foreground">Project</div>
-            <Popover.Root open={projectOpen} onOpenChange={setProjectOpen}>
-              <Popover.Trigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    'flex h-auto min-h-10 w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-3 py-2 text-left text-sm',
-                    'shadow-sm transition-colors hover:bg-muted/30 focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none',
-                  )}
-                  aria-label="Select project"
-                  id="awr-project"
-                >
-                  {selectedProject ? (
-                    <span className="min-w-0">
-                      <span className="block text-xs text-muted-foreground">{selectedProject.clientName}</span>
-                      <span className="block font-semibold text-foreground">{selectedProject.projectName}</span>
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">Select a project</span>
-                  )}
-                  <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                </button>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content
-                  className="z-50 w-[min(100vw-2rem,24rem)] rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none"
-                  sideOffset={4}
-                  align="start"
-                  onOpenAutoFocus={(e) => e.preventDefault()}
-                >
-                  <ul className="max-h-60 min-h-0 overflow-y-auto py-0.5">
-                    {projectOptions.map((p) => {
-                      const isSel = p.projectId === projectId
-                      return (
-                        <li key={p.projectId}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setProjectId(p.projectId)
-                              setProjectOpen(false)
-                            }}
-                            className={cn(
-                              'flex w-full items-start gap-2 rounded-sm px-2.5 py-2 text-left text-sm',
-                              isSel ? 'bg-primary/10' : 'hover:bg-muted/60',
-                            )}
-                          >
-                            {isSel ? <Check className="mt-0.5 size-3.5 shrink-0 text-primary" /> : (
-                              <span className="w-3.5 shrink-0" />
-                            )}
-                            <span>
-                              <span className="block text-xs text-muted-foreground">{p.clientName}</span>
-                              <span className="block font-semibold text-foreground">{p.projectName}</span>
-                            </span>
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover.Root>
+            <label
+              className="mb-1.5 block text-sm font-medium text-foreground"
+              htmlFor="add-week-project"
+            >
+              Project
+            </label>
+            <select
+              id="add-week-project"
+              className={selectClassName}
+              value={projectId}
+              onChange={(e) => onProjectChange(e.target.value)}
+              disabled={noProjects}
+            >
+              {noProjects ? (
+                <option value="">— No projects —</option>
+              ) : (
+                projectOptions.map((p) => (
+                  <option key={p.projectId} value={p.projectId}>
+                    {p.clientName} — {p.projectName}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+          <div>
+            <label
+              className="mb-1.5 block text-sm font-medium text-foreground"
+              htmlFor="add-week-task"
+            >
+              Task
+            </label>
+            <select
+              id="add-week-task"
+              className={selectClassName}
+              value={noTasksInProject || !projectId ? '' : projectTaskId}
+              onChange={(e) => setProjectTaskId(e.target.value)}
+              disabled={!projectId || taskOptions.length === 0}
+            >
+              {!projectId ? (
+                <option value="">Select a project first</option>
+              ) : noTasksInProject ? (
+                <option value="">— No tasks available for this project —</option>
+              ) : (
+                taskOptions.map((t) => (
+                  <option key={t.projectTaskId} value={t.projectTaskId}>
+                    {t.taskName}
+                  </option>
+                ))
+              )}
+            </select>
+            {noProjects ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                All assignable project–task lines are already on this week, or you have no assignments.
+              </p>
+            ) : null}
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-4 py-3">
@@ -194,7 +220,7 @@ export function AddWeekRowModal({
             type="button"
             className="bg-emerald-600 text-white hover:bg-emerald-700"
             onClick={handleAdd}
-            disabled={!projectTaskIdToAdd}
+            disabled={!canSave}
           >
             Save row
           </Button>

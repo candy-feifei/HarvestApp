@@ -67,6 +67,11 @@ function cellHoursSum(entries: TimeEntryListItem[] | undefined): number {
   return (entries ?? []).reduce((a, e) => a + (e.hours || 0), 0)
 }
 
+function parseCellHours(raw: string): number {
+  const h = parseFloat(String(raw).replace(/,/g, ''))
+  return Number.isNaN(h) || h < 0 ? 0 : h
+}
+
 type ActiveTimerState = {
   id: string
   projectTaskId: string
@@ -847,7 +852,7 @@ export function TimePage() {
       {view === 'week' && list && dayKeys.length > 0 && (
         <div className="space-y-3">
           <div className="overflow-x-auto rounded-md border border-border bg-white shadow-sm">
-            <table className="w-full min-w-[800px] table-fixed border-collapse text-sm">
+            <table className="w-full min-w-[920px] table-fixed border-collapse text-sm">
               <thead>
                 <tr className="bg-muted/30 text-left text-xs font-medium text-muted-foreground">
                   <th className="w-[260px] border-b border-r border-border px-2 py-2">Project</th>
@@ -861,7 +866,7 @@ export function TimePage() {
                     return (
                       <th
                         key={d}
-                        className="w-[80px] border-b border-l border-border px-1 py-2 text-center font-medium"
+                        className="w-[100px] min-w-[5.5rem] border-b border-l border-border px-1 py-2 text-center font-medium"
                       >
                         <div className="mb-0.5 flex min-h-4 items-center justify-center">
                           {dLocked ? <Lock className="size-3.5 text-muted-foreground" aria-label="Day locked" /> : null}
@@ -933,17 +938,48 @@ export function TimePage() {
                         const cellLocked = list.some((x) => x.isLocked)
                         const val =
                           (cellDraft[k] !== undefined ? cellDraft[k] : list.length ? String(sum) : '') ?? ''
+                        const showNoteButton =
+                          (cellDraft[k] !== undefined ? parseCellHours(String(cellDraft[k]!)) : sum) > 0
                         return (
-                          <td key={d} className="border-b border-l border-border p-0 align-top">
-                            <div className="flex flex-col gap-0.5 p-0.5">
+                          <td key={d} className="border-b border-l border-border p-0 align-middle">
+                            <div className="flex min-w-0 items-center gap-0.5 p-0.5">
+                              {showNoteButton ? (
+                                <Button
+                                  type="button"
+                                  size="icon-sm"
+                                  variant="outline"
+                                  className="h-8 w-8 shrink-0 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                                  disabled={weekLockedByApproval || multi}
+                                  onClick={() => {
+                                    const entry = list.find((x) => (x.hours || 0) > 0) ?? list[0] ?? null
+                                    setWeekCellNoteTarget({ ymd: d, entry })
+                                  }}
+                                  title={
+                                    multi
+                                      ? 'This day has multiple entries; use Day view to change each one.'
+                                      : first?.isLocked
+                                        ? 'This row is approved; edit is blocked'
+                                        : 'Note'
+                                  }
+                                  aria-label="Note"
+                                >
+                                  <StickyNote className="size-3.5" aria-hidden />
+                                </Button>
+                              ) : null}
                               <input
                                 type="text"
                                 inputMode="decimal"
                                 className={cn(
-                                  'h-8 w-full min-w-0 rounded border-0 border-transparent bg-transparent text-center text-sm tabular-nums',
-                                  'focus:border-transparent focus:bg-muted/30 focus:ring-0 focus:outline-none',
-                                  cellLocked ? 'cursor-not-allowed opacity-60' : '',
-                                  first?.status === 'APPROVED' && 'text-emerald-800',
+                                  'h-8 min-w-0 flex-1 rounded-md border-2 border-border bg-white px-1 py-0.5 text-center text-sm font-semibold tabular-nums text-foreground shadow-sm',
+                                  'placeholder:text-muted-foreground/50',
+                                  'hover:border-foreground/30',
+                                  'focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none',
+                                  cellLocked
+                                    ? 'cursor-not-allowed border-muted-foreground/25 bg-muted/30 text-muted-foreground'
+                                    : 'bg-white',
+                                  first?.status === 'APPROVED' &&
+                                    'border-emerald-300/80 bg-emerald-50/80 text-emerald-900',
+                                  multi && 'border-amber-200/80 bg-amber-50/30',
                                 )}
                                 disabled={cellLocked || weekLockedByApproval || saveCreate.isPending || multi}
                                 value={val}
@@ -961,29 +997,6 @@ export function TimePage() {
                                         : 'Hours in this week’s timesheet'
                                 }
                               />
-                              <div className="flex justify-end">
-                                <Button
-                                  type="button"
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                                  disabled={weekLockedByApproval || multi}
-                                  onClick={() => {
-                                    const entry = list.find((x) => (x.hours || 0) > 0) ?? list[0] ?? null
-                                    setWeekCellNoteTarget({ ymd: d, entry })
-                                  }}
-                                  title={
-                                    multi
-                                      ? 'This day has multiple entries; use Day view to change each one.'
-                                      : first?.isLocked
-                                        ? 'This row is approved; edit is blocked'
-                                        : 'Note'
-                                  }
-                                  aria-label="Note"
-                                >
-                                  <StickyNote className="size-3.5" aria-hidden />
-                                </Button>
-                              </div>
                             </div>
                           </td>
                         )
