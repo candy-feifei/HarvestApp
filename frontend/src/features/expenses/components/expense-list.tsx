@@ -6,6 +6,7 @@ import type { ExpenseListItem } from '@/features/expenses/api'
 import {
   groupExpensesByWeek,
   statusLabel,
+  weekExpenseApprovalAction,
   weekHeaderStatus,
 } from '@/features/expenses/lib/group-expenses-by-week'
 
@@ -18,6 +19,11 @@ type ExpenseListProps = {
   /** Only allow deleting own unlocked expenses; matches API */
   currentUserId?: string
   onDelete?: (id: string) => void
+  /** 仅「本人」视图；周标题右侧 Submit / Resubmit / Withdraw */
+  showWeekActions?: boolean
+  weekActionLoadingKey?: string | null
+  onWeekSubmit?: (weekKey: string) => void
+  onWeekWithdraw?: (weekKey: string) => void
 }
 
 function formatMoney(n: number, currency: string) {
@@ -42,6 +48,10 @@ export function ExpenseList({
   showSubmitter,
   currentUserId,
   onDelete,
+  showWeekActions,
+  weekActionLoadingKey,
+  onWeekSubmit,
+  onWeekWithdraw,
 }: ExpenseListProps) {
   const groups = useMemo(() => groupExpensesByWeek(items), [items])
 
@@ -62,6 +72,15 @@ export function ExpenseList({
     <div className="space-y-8">
       {groups.map((g) => {
         const head = weekHeaderStatus(g.items)
+        const approvalAction = weekExpenseApprovalAction(g.items)
+        const actionLabel =
+          approvalAction?.kind === 'submit'
+            ? 'Submit for approval'
+            : approvalAction?.kind === 'resubmit'
+              ? 'Resubmit for approval'
+              : approvalAction?.kind === 'withdraw'
+                ? 'Withdraw approval'
+                : null
         return (
           <section key={g.key} className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
@@ -71,13 +90,29 @@ export function ExpenseList({
                 </h3>
                 <span
                   className={cn(
-                    'rounded-full px-2 py-0.5 text-xs font-medium',
+                    'inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold tracking-tight',
                     head.className,
                   )}
                 >
                   {head.label}
                 </span>
               </div>
+              {showWeekActions && actionLabel && approvalAction ? (
+                <button
+                  type="button"
+                  className="shrink-0 text-sm font-medium text-primary hover:underline disabled:opacity-50"
+                  disabled={weekActionLoadingKey === g.key}
+                  onClick={() => {
+                    if (approvalAction.kind === 'withdraw') {
+                      onWeekWithdraw?.(g.key)
+                    } else {
+                      onWeekSubmit?.(g.key)
+                    }
+                  }}
+                >
+                  {weekActionLoadingKey === g.key ? '…' : actionLabel}
+                </button>
+              ) : null}
             </div>
             <div
               className="mb-0 hidden border-b border-border/70 bg-muted/20 px-2 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[6rem_1fr_auto] sm:gap-3"

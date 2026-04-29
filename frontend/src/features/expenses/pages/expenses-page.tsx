@@ -11,9 +11,8 @@ import {
   fetchExpenseFormOptions,
   listExpenses,
   submitExpenseWeek,
+  withdrawExpenseWeek,
 } from '@/features/expenses/api'
-import { startOfIsoWeekYmd } from '@/features/time/time-range'
-import { todayUtcYmd } from '@/features/time/time-format'
 import { listTeamMembers } from '@/features/team/api'
 import { CategoryManager } from '@/features/expenses/components/category-manager'
 import { ExpenseList } from '@/features/expenses/components/expense-list'
@@ -77,8 +76,16 @@ export function ExpensesPage() {
     },
   })
 
-  const submitWeekMut = useMutation({
-    mutationFn: () => submitExpenseWeek(startOfIsoWeekYmd(todayUtcYmd())),
+  const weekApprovalMut = useMutation({
+    mutationFn: async (args: {
+      weekKey: string
+      action: 'submit' | 'withdraw'
+    }) => {
+      if (args.action === 'withdraw') {
+        return withdrawExpenseWeek(args.weekKey)
+      }
+      return submitExpenseWeek(args.weekKey)
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['expenses'] })
     },
@@ -89,6 +96,13 @@ export function ExpensesPage() {
       ? error.message
       : error
         ? 'Could not load expenses.'
+        : null
+
+  const weekActionError =
+    weekApprovalMut.error instanceof ApiError
+      ? weekApprovalMut.error.message
+      : weekApprovalMut.error
+        ? 'Could not update week'
         : null
 
   const members = team?.items ?? []
@@ -212,19 +226,6 @@ export function ExpensesPage() {
                 <Plus className="size-4" />
                 Track expense
               </Button>
-              {scope === 'self' || scope === 'all' ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="gap-1.5 border-border"
-                  disabled={submitWeekMut.isPending}
-                  onClick={() => submitWeekMut.mutate()}
-                >
-                  {submitWeekMut.isPending
-                    ? 'Submitting…'
-                    : 'Submit week for approval'}
-                </Button>
-              ) : null}
             </>
           ) : (
             <Button
@@ -275,12 +276,29 @@ export function ExpensesPage() {
           {errorMessage ? (
             <p className="text-sm text-destructive">{errorMessage}</p>
           ) : null}
+          {weekActionError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {weekActionError}
+            </p>
+          ) : null}
           <ExpenseList
             items={data?.items ?? []}
             currency={formOptions?.defaultCurrency ?? 'USD'}
             isLoading={isLoading}
             showSubmitter={scope === 'all' || scope === 'member'}
             currentUserId={selfId}
+            showWeekActions={scope === 'self' && Boolean(selfId)}
+            weekActionLoadingKey={
+              weekApprovalMut.isPending
+                ? (weekApprovalMut.variables?.weekKey ?? null)
+                : null
+            }
+            onWeekSubmit={(weekKey) =>
+              weekApprovalMut.mutate({ weekKey, action: 'submit' })
+            }
+            onWeekWithdraw={(weekKey) =>
+              weekApprovalMut.mutate({ weekKey, action: 'withdraw' })
+            }
             onDelete={(id) => {
               if (window.confirm('Delete this expense?')) {
                 void delMut.mutate(id)

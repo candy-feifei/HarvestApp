@@ -138,6 +138,17 @@ export function submitExpenseWeek(weekOf: string) {
   })
 }
 
+export function withdrawExpenseWeek(weekOf: string) {
+  return apiRequest<{
+    unlockedCount: number
+    weekFrom: string
+    toExclusive: string
+  }>('/expenses/withdraw-week', {
+    method: 'POST',
+    body: JSON.stringify({ weekOf }),
+  })
+}
+
 // --- Expense categories ---
 
 export type ExpenseCategoryItem = {
