@@ -105,6 +105,8 @@ export function TimePage() {
   const [weekListAnchorYmd, setWeekListAnchorYmd] = useState(w0)
   const [cellDraft, setCellDraft] = useState<Record<string, string>>({})
   const [trackOpen, setTrackOpen] = useState(false)
+  /** Calendar “+ Add time” (new entry): manual duration only, no timer / countdown. */
+  const [trackModalCalendarAdd, setTrackModalCalendarAdd] = useState(false)
   const [editing, setEditing] = useState<TimeEntryListItem | null>(null)
   const [activeTimer, setActiveTimer] = useState<ActiveTimerState | null>(null)
   const [timerTick, setTimerTick] = useState(0)
@@ -338,6 +340,12 @@ export function TimePage() {
     }
   }, [invalidate])
 
+  const closeTrackModal = useCallback(() => {
+    setTrackOpen(false)
+    setEditing(null)
+    setTrackModalCalendarAdd(false)
+  }, [])
+
   const handleStartTimerFromModal = useCallback(
     async (payload: {
       projectTaskId: string
@@ -368,9 +376,9 @@ export function TimePage() {
       }
       setActiveTimer(next)
       activeTimerRef.current = next
-      setTrackOpen(false)
+      closeTrackModal()
     },
-    [stopRunningTimer, weekLockedByApproval],
+    [stopRunningTimer, weekLockedByApproval, closeTrackModal],
   )
 
   const handleStopTimer = useCallback(() => {
@@ -450,8 +458,7 @@ export function TimePage() {
     notes?: string
   }) => {
     if (weekLockedByApproval) {
-      setTrackOpen(false)
-      setEditing(null)
+      closeTrackModal()
       return
     }
     await stopRunningTimer()
@@ -470,8 +477,7 @@ export function TimePage() {
       }
       await saveCreate.mutateAsync(payload)
     }
-    setTrackOpen(false)
-    setEditing(null)
+    closeTrackModal()
   }
 
   const onTrackDelete = useCallback(async () => {
@@ -479,14 +485,12 @@ export function TimePage() {
       return
     }
     if (weekLockedByApproval) {
-      setTrackOpen(false)
-      setEditing(null)
+      closeTrackModal()
       return
     }
     await doDelete.mutateAsync(editing.id)
-    setTrackOpen(false)
-    setEditing(null)
-  }, [editing, doDelete, weekLockedByApproval])
+    closeTrackModal()
+  }, [editing, doDelete, weekLockedByApproval, closeTrackModal])
 
   const getWeekOfForApi = useCallback((): string => {
     if (list?.range?.from) {
@@ -638,10 +642,9 @@ export function TimePage() {
 
   useEffect(() => {
     if (weekLockedByApproval) {
-      setTrackOpen(false)
-      setEditing(null)
+      closeTrackModal()
     }
-  }, [weekLockedByApproval])
+  }, [weekLockedByApproval, closeTrackModal])
 
   const submitWeekButtonLabel = hasWeekApprovalPending
     ? 'Resubmit week for approval'
@@ -742,6 +745,7 @@ export function TimePage() {
             if (weekLockedByApproval) {
               return
             }
+            setTrackModalCalendarAdd(false)
             setEditing(null)
             setTrackOpen(true)
           }}
@@ -774,6 +778,7 @@ export function TimePage() {
             if (weekLockedByApproval || e.isLocked) {
               return
             }
+            setTrackModalCalendarAdd(false)
             setEditing(e)
             setTrackOpen(true)
           }}
@@ -1140,6 +1145,7 @@ export function TimePage() {
               if (weekLockedByApproval) {
                 return
               }
+              setTrackModalCalendarAdd(true)
               setDaySelectedYmd(d)
               setEditing(null)
               setTrackOpen(true)
@@ -1148,6 +1154,7 @@ export function TimePage() {
               if (weekLockedByApproval || e.isLocked) {
                 return
               }
+              setTrackModalCalendarAdd(false)
               setEditing(e)
               setTrackOpen(true)
             }}
@@ -1194,10 +1201,7 @@ export function TimePage() {
 
       <TrackTimeModal
         open={trackOpen}
-        onClose={() => {
-          setTrackOpen(false)
-          setEditing(null)
-        }}
+        onClose={closeTrackModal}
         dateLabel={modalDateLabel(modalYmd)}
         ymd={modalYmd}
         projects={trackTimeOptions?.projects ?? []}
@@ -1205,9 +1209,10 @@ export function TimePage() {
         editing={editing}
         isSubmitting={saveCreate.isPending || saveUpdate.isPending}
         onSave={onTrackSave}
-        onStartTimer={handleStartTimerFromModal}
+        onStartTimer={trackModalCalendarAdd ? undefined : handleStartTimerFromModal}
         onDelete={editing && !editing.isLocked ? onTrackDelete : undefined}
         isDeleting={doDelete.isPending}
+        calendarAddMode={trackModalCalendarAdd}
       />
 
       <WeekCellNoteDialog

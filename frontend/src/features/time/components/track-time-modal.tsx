@@ -38,6 +38,10 @@ type TrackTimeModalProps = {
   /** 仅编辑已解锁条目时可用 */
   onDelete?: () => Promise<void>
   isDeleting?: boolean
+  /**
+   * New entry from calendar: enter duration and save only — no “Start timer” / live countdown.
+   */
+  calendarAddMode?: boolean
 }
 
 const selectClassName = cn(
@@ -58,7 +62,9 @@ export function TrackTimeModal({
   onStartTimer,
   onDelete,
   isDeleting = false,
+  calendarAddMode = false,
 }: TrackTimeModalProps) {
+  const isCalendarNew = Boolean(calendarAddMode && !editing)
   const [projectId, setProjectId] = useState('')
   const [projectTaskId, setProjectTaskId] = useState('')
   const [timeStr, setTimeStr] = useState('0:00')
@@ -115,10 +121,10 @@ export function TrackTimeModal({
       setTimeStr(formatDecimalHoursAsClock(editing.hours))
       setNotes(editing.notes ?? '')
     } else {
-      setTimeStr('0:00')
+      setTimeStr(calendarAddMode ? '' : '0:00')
       setNotes('')
     }
-  }, [open, editing, projects])
+  }, [open, editing, projects, calendarAddMode])
 
   useEffect(() => {
     if (!open || editing) {
@@ -174,7 +180,11 @@ export function TrackTimeModal({
     if (!projectTaskId) {
       return
     }
-    if (!editing && h <= 0) {
+    if (isCalendarNew) {
+      if (h <= 0) {
+        return
+      }
+    } else if (!editing && h <= 0) {
       return
     }
     await onSave({ projectTaskId, date: ymd, hours: h, notes: notes.trim() || undefined })
@@ -305,10 +315,13 @@ export function TrackTimeModal({
               </label>
               <input
                 id="time"
-                className="w-full rounded-md border-2 border-border bg-white py-2 text-center text-3xl font-medium tabular-nums tracking-tight text-foreground shadow-sm sm:max-w-[7rem]"
+                className="w-full rounded-md border-2 border-border bg-white py-2 text-center text-3xl font-medium tabular-nums tracking-tight text-foreground shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none sm:max-w-[7rem]"
                 value={timeStr}
                 onChange={(e) => setTimeStr(e.target.value)}
                 onBlur={() => {
+                  if (isCalendarNew && timeStr.trim() === '') {
+                    return
+                  }
                   setTimeStr((s) => formatDecimalHoursAsClock(parseClockToDecimal(s)))
                 }}
                 inputMode="text"
@@ -369,6 +382,15 @@ export function TrackTimeModal({
                   disabled={busy || !canUpdate}
                 >
                   Update entry
+                </Button>
+              ) : isCalendarNew ? (
+                <Button
+                  type="button"
+                  className={primaryBtn}
+                  onClick={handleSave}
+                  disabled={busy || !canPickTask || !hasManualHours}
+                >
+                  Save entry
                 </Button>
               ) : canSaveNewWithHours ? (
                 <Button
