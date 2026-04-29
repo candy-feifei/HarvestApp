@@ -525,12 +525,12 @@ export class OrganizationService {
       weeklyCapacity: row.weeklyCapacity ?? 0,
       systemRole: row.systemRole,
       managerPermissions: parseManagerPermissions(
-        row.managerPermissions,
+        null,
         row.systemRole,
       ),
       isPinned: row.isPinned,
       status: row.status,
-      assignAllFutureProjects: row.assignAllFutureProjects,
+      assignAllFutureProjects: false,
       defaultBillableRatePerHour: rate ? Number(rate.billableRate) : 0,
       costRatePerHour: rate ? Number(rate.costRate) : 0,
     };
@@ -546,7 +546,6 @@ export class OrganizationService {
       select: {
         id: true,
         userId: true,
-        assignAllFutureProjects: true,
       },
     });
     if (!uo) {
@@ -618,7 +617,7 @@ export class OrganizationService {
     return {
       memberId: uo.id,
       userId: uo.userId,
-      assignAllFutureProjects: uo.assignAllFutureProjects,
+      assignAllFutureProjects: false,
       clients: [...clientMap.values()],
     };
   }
@@ -660,13 +659,6 @@ export class OrganizationService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      if (dto.assignAllFutureProjects != null) {
-        await tx.userOrganization.update({
-          where: { id: uo.id },
-          data: { assignAllFutureProjects: dto.assignAllFutureProjects },
-        });
-      }
-
       if (projectIds.length === 0) {
         await tx.projectAssignment.deleteMany({
           where: { userId: uo.userId },
@@ -723,7 +715,7 @@ export class OrganizationService {
       }
     }
 
-    const touchesRole = dto.systemRole != null || dto.managerPermissions != null;
+    const touchesRole = dto.systemRole != null;
     if (
       touchesRole
       && !canChangeMemberSystemRole.includes(actorSystemRole as SystemRole)
@@ -757,22 +749,8 @@ export class OrganizationService {
           }
         : {}),
     };
-    if (touchesRole) {
-      if (dto.systemRole != null) uoData.systemRole = dto.systemRole;
-      const nextRole = (dto.systemRole ?? row.systemRole) as SystemRole;
-      if (nextRole === 'MANAGER') {
-        if (dto.managerPermissions != null) {
-          uoData.managerPermissions = {
-            ...dto.managerPermissions,
-          } as unknown as Prisma.InputJsonValue;
-        } else if (dto.systemRole === 'MANAGER') {
-          uoData.managerPermissions = {
-            ...DEFAULT_MGR_PERMS,
-          } as unknown as Prisma.InputJsonValue;
-        }
-      } else {
-        uoData.managerPermissions = Prisma.JsonNull;
-      }
+    if (touchesRole && dto.systemRole != null) {
+      uoData.systemRole = dto.systemRole;
     }
 
     await this.prisma.$transaction(async (tx) => {

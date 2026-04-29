@@ -66,7 +66,6 @@ model User {
   organizations      UserOrganization[]
   accounts           Account[]
   timeEntries        TimeEntry[]
-  timeEntryTimers    TimeEntryTimer[]
   expenses           Expense[]
   projectAssignments ProjectAssignment[]
 
@@ -89,8 +88,6 @@ model UserOrganization {
   inviteToken     String?      @unique
   inviteExpiresAt DateTime?
   systemRole      SystemRole   @default(MEMBER)
-  /// 仅当 systemRole=MANAGER 时有效；额外能力开关（Harvest 风格 8 项）
-  managerPermissions Json?
   customRoles     Role[]
 
   managerId    String?
@@ -98,8 +95,6 @@ model UserOrganization {
   subordinates UserOrganization[] @relation("ManagerToPeople")
 
   weeklyCapacity  Int            @default(40)
-  /// 勾选后，新创建的项目会自动将该用户加入为成员（isManager 默认为 false，可在单项目上再调）
-  assignAllFutureProjects Boolean  @default(false)
   /// 下属提交工时报时是否邮件通知此人（Manager 流程）
   emailNotifyManagedPeopleTimesheets  Boolean  @default(true) @map("email_notify_managed_people_timesheets")
   /// 其负责项目上有成员提交工时报时是否邮件通知此人
@@ -200,20 +195,6 @@ model Project {
   budgetAmount  Decimal?      @db.Decimal(18, 2)
   notifyAt      Int?
   isArchived    Boolean       @default(false)
-  isPinned      Boolean       @default(false)
-  startsOn      DateTime?
-  endsOn        DateTime?
-  notes         String?       @db.Text
-  /// 项目发票：与客户 Client 的 invoice 字段同语义
-  invoiceDueMode  InvoiceDueMode @default(UPON_RECEIPT)
-  invoiceNetDays  Int?
-  invoicePoNumber String?        @db.VarChar(500)
-  invoiceTaxPercent       Decimal? @db.Decimal(5, 2)
-  invoiceSecondTaxEnabled Boolean  @default(false)
-  invoiceSecondTaxPercent Decimal? @db.Decimal(5, 2)
-  invoiceDiscountPercent  Decimal? @db.Decimal(5, 2)
-  /// 扩展：可计费模式、列表 spent/costs 等（发票在表列，不在此 JSON）
-  metadata      Json?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -254,7 +235,6 @@ model ProjectTask {
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   task        Task        @relation(fields: [taskId], references: [id], onDelete: Restrict)
   timeEntries TimeEntry[]
-  timeEntryTimers TimeEntryTimer[]
 
   @@unique([projectId, taskId])
   @@map("project_tasks")
@@ -289,8 +269,6 @@ model TimeEntry {
   projectId     String
   projectTaskId String
   approvalId    String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -352,32 +330,8 @@ model Approval {
   approver    User?       @relation("ApprovalApprover", fields: [approverId], references: [id], onDelete: SetNull)
   timeEntries TimeEntry[]
   expenses    Expense[]
-  timeTimers  TimeEntryTimer[]
 
   @@map("approvals")
-}
-
-model TimeEntryTimer {
-  id            String      @id @default(uuid())
-  status        TimerStatus @default(RUNNING)
-  startedAt     DateTime
-  stoppedAt     DateTime?
-  spentDate     DateTime
-  notes         String?     @db.Text
-  userId        String
-  projectTaskId String
-  approvalId    String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectTask ProjectTask @relation(fields: [projectTaskId], references: [id], onDelete: Restrict)
-  approval    Approval?   @relation(fields: [approvalId], references: [id], onDelete: SetNull)
-
-  @@index([userId, status])
-  @@index([userId, startedAt])
-  @@index([userId, spentDate])
-  @@map("time_entry_timers")
 }
 
 // --- 5. OAuth 与认证审计（沿用原 auth 服务）---
@@ -482,30 +436,8 @@ enum ApprovalStatus {
   WITHDRAWN
 }
 
-enum TimerStatus {
-  RUNNING
-  STOPPED
-}
-
 /// 客户发票账期方式
 enum InvoiceDueMode {
   UPON_RECEIPT
   NET_DAYS
-}
-
-/// Approval/report page time granularity
-enum ReportPeriod {
-  DAY
-  WEEK
-  SEMIMONTH
-  MONTH
-  QUARTER
-  CUSTOM
-}
-
-/// Approval page table grouping method
-enum ApprovalsGroupBy {
-  PERSON
-  PROJECT
-  CLIENT
 }

@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -379,8 +380,9 @@ export class TimeEntriesService {
       status: e.status,
       // 仅「已批准」锁定；已提交待审批 (SUBMITTED) 可继续增改，前端依此置灰/解锁。
       isLocked: e.status === 'APPROVED',
-      createdAt: e.createdAt.toISOString(),
-      updatedAt: e.updatedAt.toISOString(),
+      // DB 已移除 time_entries.createdAt/updatedAt，用 spentDate 占位供前端结构兼容
+      createdAt: e.spentDate.toISOString(),
+      updatedAt: e.spentDate.toISOString(),
     }
   }
 
@@ -940,168 +942,28 @@ export class TimeEntriesService {
     return { unlockedCount: r.count, weekFrom: from.toISOString(), toExclusive: toExclusive.toISOString() }
   }
 
-  async getActiveTimer(membership: ActiveMembership, user: CurrentUserPayload) {
-    const orgId = membership.organizationId
-    const t = await this.prisma.timeEntryTimer.findFirst({
-      where: {
-        userId: user.userId,
-        status: 'RUNNING',
-        stoppedAt: null,
-        projectTask: { project: { organizationId: orgId } },
-      },
-      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
-      include: {
-        projectTask: {
-          include: {
-            task: { select: { name: true } },
-            project: { select: { name: true, client: { select: { id: true, name: true } } } },
-          },
-        },
-      },
-    })
-    if (!t) {
-      return { timer: null }
-    }
-    return {
-      timer: {
-        id: t.id,
-        projectTaskId: t.projectTaskId,
-        date: toYmd(t.spentDate),
-        spentDate: t.spentDate.toISOString(),
-        startedAt: t.startedAt.toISOString(),
-        notes: t.notes ?? null,
-        clientName: t.projectTask.project.client.name,
-        projectName: t.projectTask.project.name,
-        taskName: t.projectTask.task.name,
-      },
-    }
+  async getActiveTimer(_membership: ActiveMembership, _user: CurrentUserPayload) {
+    return { timer: null }
   }
 
   async startTimer(
-    membership: ActiveMembership,
-    user: CurrentUserPayload,
-    body: StartTimeEntryTimerDto,
+    _membership: ActiveMembership,
+    _user: CurrentUserPayload,
+    _body: StartTimeEntryTimerDto,
   ) {
-    const orgId = membership.organizationId
-    const elevated = this.isElevatedRole(membership.systemRole)
-    const dayStart = utcDayStart(body.date)
-    const pt = await this.getProjectTaskInOrg(orgId, body.projectTaskId)
-    if (!(await this.canLogTimeOnProject(user.userId, pt.projectId, elevated))) {
-      throw new ForbiddenException('You are not assigned to this project.')
-    }
-
-    // 若该周在 approvals 中已批准，则禁止开始计时（整周只读）
-    const weekMon = startOfIsoWeekFromUtcDate(dayStart)
-    const weekLastDayStart = addUtcDays(weekMon, 6)
-    const w = await this.findWeekApprovalForTimesheetUi(user.userId, weekMon, weekLastDayStart)
-    if (w?.status === 'APPROVED') {
-      throw new ConflictException('This week is approved; you cannot start a timer for it.')
-    }
-
-    const now = new Date()
-    const created = await this.prisma.$transaction(async (tx) => {
-      await tx.timeEntryTimer.updateMany({
-        where: { userId: user.userId, status: 'RUNNING', stoppedAt: null },
-        data: { status: 'STOPPED', stoppedAt: now },
-      })
-      return tx.timeEntryTimer.create({
-        data: {
-          userId: user.userId,
-          projectTaskId: body.projectTaskId,
-          spentDate: dayStart,
-          notes: body.notes ?? null,
-          startedAt: now,
-          status: 'RUNNING',
-        },
-        include: {
-          projectTask: {
-            include: {
-              task: { select: { name: true } },
-              project: { select: { name: true, client: { select: { id: true, name: true } } } },
-            },
-          },
-        },
-      })
-    })
-    return {
-      timer: {
-        id: created.id,
-        projectTaskId: created.projectTaskId,
-        date: toYmd(created.spentDate),
-        spentDate: created.spentDate.toISOString(),
-        startedAt: created.startedAt.toISOString(),
-        notes: created.notes ?? null,
-        clientName: created.projectTask.project.client.name,
-        projectName: created.projectTask.project.name,
-        taskName: created.projectTask.task.name,
-      },
-    }
+    throw new ServiceUnavailableException(
+      '服务器端计时器表已随迁移移除，请使用手动填写工时；接口保留仅为兼容前端。',
+    )
   }
 
-  async stopTimer(membership: ActiveMembership, user: CurrentUserPayload, timerId: string) {
-    const orgId = membership.organizationId
-    const now = new Date()
-    const t = await this.prisma.timeEntryTimer.findFirst({
-      where: {
-        id: timerId,
-        userId: user.userId,
-        status: 'RUNNING',
-        stoppedAt: null,
-        projectTask: { project: { organizationId: orgId } },
-      },
-      include: {
-        projectTask: {
-          include: {
-            task: { select: { name: true } },
-            project: { select: { id: true, name: true, client: { select: { id: true, name: true } } } },
-          },
-        },
-      },
-    })
-    if (!t) {
-      throw new NotFoundException('Running timer not found.')
-    }
-
-    const ms = now.getTime() - t.startedAt.getTime()
-    const hours = Math.max(0.01, Math.round((ms / 3600000) * 100) / 100)
-
-    const res = await this.prisma.$transaction(async (tx) => {
-      await tx.timeEntryTimer.update({
-        where: { id: t.id },
-        data: { status: 'STOPPED', stoppedAt: now },
-      })
-      if (ms < 1000) {
-        return { action: 'stopped' as const, item: null }
-      }
-
-      const daySum = await this.sumHoursForUserOrgDay(tx, user.userId, orgId, t.spentDate)
-      if (daySum + hours > 24) {
-        throw new BadRequestException('Total hours for a single day must not exceed 24.')
-      }
-
-      const entry = await tx.timeEntry.create({
-        data: {
-          userId: user.userId,
-          projectId: t.projectTask.project.id,
-          projectTaskId: t.projectTaskId,
-          spentDate: t.spentDate,
-          hours: toDecimal(hours),
-          notes: t.notes ?? null,
-        },
-        include: {
-          project: {
-            select: {
-              name: true,
-              client: { select: { id: true, name: true } },
-            },
-          },
-          projectTask: { include: { task: { select: { name: true } } } },
-        },
-      })
-      return { action: 'stopped' as const, item: this.serializeEntry(entry as TimeEntrySerializeInput) }
-    })
-
-    return res
+  async stopTimer(
+    _membership: ActiveMembership,
+    _user: CurrentUserPayload,
+    _timerId: string,
+  ) {
+    throw new ServiceUnavailableException(
+      '服务器端计时器表已随迁移移除，请使用手动填写工时；接口保留仅为兼容前端。',
+    )
   }
 
   async approve(
