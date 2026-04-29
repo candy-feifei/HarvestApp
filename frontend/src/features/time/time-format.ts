@@ -11,7 +11,11 @@ export function formatDecimalHoursAsClock(hours: number | null | undefined): str
 }
 
 /**
- * 解析 "2:30"、"2" 为小时小数；空 / 无法解析 返回 0
+ * 解析为「天内的十进制小时」用于 API：支持
+ * - `2:30`、`2:5`（分钟可进位到小时，如 `3:90` → 4.5h）
+ * - `3.90`：整数部分为小时、小数点后的数字为**分钟**（3h+90m → 4.5h → 显示 4:30），不是十进制小时
+ * - 纯整数 `2`：整点小时
+ * 空 / 无法解析 返回 0，结果限制在 0–24 h
  */
 /** 运行中计时器展示：已运行毫秒数 → H:MM:SS */
 export function formatElapsedMs(elapsedMs: number): string {
@@ -26,16 +30,32 @@ export function formatElapsedMs(elapsedMs: number): string {
 }
 
 export function parseClockToDecimal(input: string): number {
-  const t = input.trim()
+  const t = input.trim().replace(/,/g, '')
   if (!t) return 0
-  const m = t.match(/^(\d+):(\d{0,2})$/)
-  if (m) {
-    const hh = parseInt(m[1] ?? '0', 10) || 0
-    const mm = parseInt((m[2] ?? '0') || '0', 10) || 0
-    return Math.min(24, hh + mm / 60)
+
+  const colon = t.match(/^(\d+):(\d*)$/)
+  if (colon) {
+    const hh = parseInt(colon[1] ?? '0', 10) || 0
+    const mm = parseInt((colon[2] ?? '0') || '0', 10) || 0
+    const total = hh + mm / 60
+    return Number.isNaN(total) || total < 0 ? 0 : Math.min(24, total)
   }
-  const n = parseFloat(t.replace(/,/g, ''))
-  return Number.isNaN(n) || n < 0 ? 0 : Math.min(24, n)
+
+  const dot = t.match(/^(\d+)\.(\d+)$/)
+  if (dot) {
+    const hh = parseInt(dot[1] ?? '0', 10) || 0
+    const mm = parseInt(dot[2] ?? '0', 10) || 0
+    const total = hh + mm / 60
+    return Number.isNaN(total) || total < 0 ? 0 : Math.min(24, total)
+  }
+
+  if (/^\d+$/.test(t)) {
+    const n = parseInt(t, 10)
+    return Number.isNaN(n) || n < 0 ? 0 : Math.min(24, n)
+  }
+
+  const f = parseFloat(t)
+  return Number.isNaN(f) || f < 0 ? 0 : Math.min(24, f)
 }
 
 export function todayUtcYmd(): string {

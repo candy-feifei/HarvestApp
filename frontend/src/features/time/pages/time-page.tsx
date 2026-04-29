@@ -19,6 +19,7 @@ import {
   formatDecimalHoursAsClock,
   formatElapsedMs,
   formatLongDateEn,
+  parseClockToDecimal,
   todayUtcYmd,
 } from '@/features/time/time-format'
 import {
@@ -68,8 +69,7 @@ function cellHoursSum(entries: TimeEntryListItem[] | undefined): number {
 }
 
 function parseCellHours(raw: string): number {
-  const h = parseFloat(String(raw).replace(/,/g, ''))
-  return Number.isNaN(h) || h < 0 ? 0 : h
+  return parseClockToDecimal(String(raw))
 }
 
 type ActiveTimerState = {
@@ -384,40 +384,50 @@ export function TimePage() {
       }
       const k = cellKey(projectTaskId, date)
       const listForCell = entriesByCell.get(k) ?? []
-      const currentSum = cellHoursSum(listForCell)
-      const h = parseFloat(String(raw).replace(/,/g, ''))
-      const hours = Number.isNaN(h) || h < 0 ? 0 : Math.min(24, h)
+      const hours = parseClockToDecimal(raw)
+      const clearCellDraft = () => {
+        setCellDraft((c) => {
+          if (!(k in c)) {
+            return c
+          }
+          const n = { ...c }
+          delete n[k]
+          return n
+        })
+      }
       if (listForCell.some((e) => e.isLocked)) {
-        if (raw !== String(currentSum) && cellDraft[k] !== undefined) {
-          setCellDraft((c) => ({ ...c, [k]: String(currentSum) }))
-        }
+        clearCellDraft()
         return
       }
       if (listForCell.length > 1) {
-        if (Math.abs(hours - currentSum) < 0.0001) return
-        setCellDraft((c) => ({ ...c, [k]: String(currentSum) }))
+        clearCellDraft()
         return
       }
       if (listForCell.length === 1) {
         const prev = listForCell[0]!
         if (hours === 0) {
           await doDelete.mutateAsync(prev.id)
-          setCellDraft((c) => {
-            const n = { ...c }
-            delete n[k]
-            return n
-          })
+          clearCellDraft()
           return
         }
-        if (Math.abs(hours - (prev.hours || 0)) < 0.0001) return
+        if (Math.abs(hours - (prev.hours || 0)) < 0.0001) {
+          clearCellDraft()
+          return
+        }
         await saveUpdate.mutateAsync({ id: prev.id, body: { hours } })
+        clearCellDraft()
+        return
+      }
+      if (listForCell.length === 0 && hours === 0) {
+        clearCellDraft()
         return
       }
       if (hours > 0) {
         await saveCreate.mutateAsync({ projectTaskId, date, hours })
+        clearCellDraft()
       }
     },
-    [entriesByCell, cellDraft, doDelete, saveCreate, saveUpdate, weekLockedByApproval],
+    [entriesByCell, doDelete, saveCreate, saveUpdate, weekLockedByApproval],
   )
 
   const onNavSingleDay = (d: 1 | -1) => {
@@ -655,7 +665,7 @@ export function TimePage() {
   }, [weekLockedByApproval, activeTimer, daySelectedYmd, timerElapsedLabel])
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="mx-auto max-w-7xl space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Timesheet</h1>
@@ -937,7 +947,11 @@ export function TimePage() {
                         const multi = list.length > 1
                         const cellLocked = list.some((x) => x.isLocked)
                         const val =
-                          (cellDraft[k] !== undefined ? cellDraft[k] : list.length ? String(sum) : '') ?? ''
+                          (cellDraft[k] !== undefined
+                            ? cellDraft[k]
+                            : list.length
+                              ? formatDecimalHoursAsClock(sum)
+                              : '') ?? ''
                         const showNoteButton =
                           (cellDraft[k] !== undefined ? parseCellHours(String(cellDraft[k]!)) : sum) > 0
                         return (

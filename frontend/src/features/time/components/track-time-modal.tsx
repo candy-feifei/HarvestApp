@@ -178,6 +178,7 @@ export function TrackTimeModal({
       return
     }
     await onSave({ projectTaskId, date: ymd, hours: h, notes: notes.trim() || undefined })
+    setTimeStr(formatDecimalHoursAsClock(h))
   }
 
   const handleStartTimer = () => {
@@ -307,6 +308,9 @@ export function TrackTimeModal({
                 className="w-full rounded-md border-2 border-border bg-white py-2 text-center text-3xl font-medium tabular-nums tracking-tight text-foreground shadow-sm sm:max-w-[7rem]"
                 value={timeStr}
                 onChange={(e) => setTimeStr(e.target.value)}
+                onBlur={() => {
+                  setTimeStr((s) => formatDecimalHoursAsClock(parseClockToDecimal(s)))
+                }}
                 inputMode="text"
                 autoComplete="off"
                 placeholder="0:00"
