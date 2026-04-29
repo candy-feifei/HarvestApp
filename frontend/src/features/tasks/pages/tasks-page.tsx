@@ -139,7 +139,7 @@ function TaskRow({
       ) : null}
       <div
         className={cn(
-          'grid grid-cols-[2rem_1fr_auto_auto] items-center gap-2 border-b border-border/80 px-2 py-2.5 sm:grid-cols-[2rem_1fr_8rem_7rem] sm:px-3',
+          'grid grid-cols-[2rem_1fr_auto_auto] items-center gap-2 border-b border-border/80 px-2 py-2.5 sm:grid-cols-[2rem_1fr_12rem_7rem] sm:px-3',
           'hover:bg-muted/15',
         )}
       >
@@ -293,7 +293,7 @@ function TaskBlock({
       ) : (
         <div className="overflow-visible rounded-md border border-border bg-white shadow-sm">
           <div
-            className="grid grid-cols-[2rem_1fr_auto_auto] items-center gap-2 border-b border-border bg-muted/20 px-2 py-1.5 text-sm text-muted-foreground sm:grid-cols-[2rem_1fr_8rem_7rem] sm:px-3"
+            className="grid grid-cols-[2rem_1fr_auto_auto] items-center gap-2 border-b border-border bg-muted/20 px-2 py-1.5 text-sm text-muted-foreground sm:grid-cols-[2rem_1fr_12rem_7rem] sm:px-3"
             role="row"
           >
             <div className="flex justify-center">
@@ -315,7 +315,7 @@ function TaskBlock({
               />
             </div>
             <div />
-            <div className="pr-0 text-right text-sm font-medium text-foreground/90 sm:pr-1">
+            <div className="whitespace-nowrap pr-0 text-right text-sm font-medium text-foreground/90 sm:pr-1">
               Default billable rate
             </div>
             <div />
