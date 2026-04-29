@@ -34,6 +34,9 @@ import {
 } from '../types'
 
 const helpCls = 'text-xs text-muted-foreground'
+/** 与 client 表单的 tax rate 输入一致 */
+const taxRateInputCls =
+  'w-24 rounded-md border border-border bg-white px-2 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30'
 const cardTabBase =
   'flex flex-1 flex-col items-start rounded-md border px-3 py-3 text-left text-sm transition'
 const projectTypeCard = (active: boolean) =>
@@ -629,62 +632,65 @@ export function ProjectFormPage() {
           </div>
 
           <label className={labelCls} htmlFor="proj-tax1">
-            Tax
+            Tax rate
           </label>
-          <div className={fieldWrap}>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                id="proj-tax1"
-                type="number"
-                min={0}
-                step="0.01"
-                className={cn(inputCls, 'w-20 tabular-nums')}
-                value={form.invoice.taxPercent}
-                onChange={(e) =>
-                  set('invoice', {
-                    ...form.invoice,
-                    taxPercent: Number(e.target.value) || 0,
-                  })
-                }
-              />
-              <span className="text-sm text-muted-foreground">%</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              id="proj-tax1"
+              className={taxRateInputCls}
+              value={form.invoice.taxPercent}
+              onChange={(e) => {
+                const v = e.target.value
+                const n = v === '' ? 0 : Number.parseFloat(v) || 0
+                set('invoice', { ...form.invoice, taxPercent: n })
+              }}
+              inputMode="decimal"
+              placeholder="0"
+            />
+            <span className="text-sm text-muted-foreground">%</span>
+            {!form.invoice.secondTaxEnabled && (
               <button
                 type="button"
-                className="text-sm text-primary hover:underline"
+                className="ml-1 text-sm font-medium text-primary hover:underline"
                 onClick={() =>
-                  set('invoice', {
-                    ...form.invoice,
-                    secondTaxEnabled: !form.invoice.secondTaxEnabled,
-                  })
+                  set('invoice', { ...form.invoice, secondTaxEnabled: true })
                 }
               >
-                {form.invoice.secondTaxEnabled ? 'Disable' : 'Enable'} second
-                tax
+                Add second tax rate
               </button>
-            </div>
+            )}
           </div>
+
           {form.invoice.secondTaxEnabled ? (
             <>
-              <label className={labelCls} htmlFor="proj-tax2">
-                Second tax
-              </label>
-              <div className={fieldWrap}>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="proj-tax2"
-                    type="number"
-                    min={0}
-                    className={cn(inputCls, 'w-20 tabular-nums')}
-                    value={form.invoice.secondTaxPercent}
-                    onChange={(e) =>
-                      set('invoice', {
-                        ...form.invoice,
-                        secondTaxPercent: Number(e.target.value) || 0,
-                      })
-                    }
-                  />
-                  <span className="text-sm text-muted-foreground">%</span>
-                </div>
+              <span className={labelCls}>Second tax rate</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  id="proj-tax2"
+                  className={taxRateInputCls}
+                  value={form.invoice.secondTaxPercent}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    const n = v === '' ? 0 : Number.parseFloat(v) || 0
+                    set('invoice', { ...form.invoice, secondTaxPercent: n })
+                  }}
+                  inputMode="decimal"
+                  placeholder="0"
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+                <button
+                  type="button"
+                  className="text-sm text-primary hover:underline"
+                  onClick={() =>
+                    set('invoice', {
+                      ...form.invoice,
+                      secondTaxEnabled: false,
+                      secondTaxPercent: 0,
+                    })
+                  }
+                >
+                  Remove
+                </button>
               </div>
             </>
           ) : null}

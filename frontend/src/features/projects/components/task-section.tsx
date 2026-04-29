@@ -7,6 +7,9 @@ import { parseTaskDefaultRate, type ProjectFormTask } from '../types'
 const inputCls =
   'w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-foreground shadow-sm tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30'
 
+const selectAllNoneBtnCls =
+  'm-0 inline cursor-pointer appearance-none border-0 border-transparent bg-transparent p-0 align-baseline font-inherit !text-primary shadow-none ring-0 [text-decoration:none] hover:opacity-90'
+
 type TaskSectionProps = {
   tasks: ProjectFormTask[]
   onChange: (next: ProjectFormTask[]) => void
@@ -108,18 +111,26 @@ export function TaskSection({
       >
         <div />
         <div>Tasks</div>
-        <div className="text-center sm:text-left">
+        <div className="text-center">
           <span>Billable</span>
-          <button
-            type="button"
-            onClick={() => {
-              const all = tasks.every((t) => t.isBillable)
-              setAllBillable(!all)
-            }}
-            className="ms-1 text-primary hover:underline"
-          >
-            Select all / None
-          </button>
+          <div className="text-[11px] font-normal">
+            Select&nbsp;
+            <button
+              type="button"
+              onClick={() => setAllBillable(true)}
+              className={selectAllNoneBtnCls}
+            >
+              All
+            </button>
+            {' / '}
+            <button
+              type="button"
+              onClick={() => setAllBillable(false)}
+              className={selectAllNoneBtnCls}
+            >
+              None
+            </button>
+          </div>
         </div>
         {showRateColumn ? (
           <div className="text-right">
@@ -153,7 +164,7 @@ export function TaskSection({
             <span className="text-sm font-medium text-foreground">
               {t.name}
             </span>
-            <div className="flex justify-center sm:justify-start">
+            <div className="flex justify-center">
               <input
                 type="checkbox"
                 className="size-4 rounded border-border text-primary"
