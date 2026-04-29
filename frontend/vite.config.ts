@@ -19,6 +19,11 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: [path.resolve(__dirname, 'vitest.setup.ts')],
       include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'html', 'json'],
+        reportsDirectory: path.resolve(__dirname, 'coverage'),
+      },
     },
     server: {
       proxy: {
