@@ -95,6 +95,20 @@ export type ClientDetail = {
   resolvedCurrency: string
   /** 未归档项目，用于编辑页侧栏 */
   activeProjects?: { id: string; name: string }[]
+  /** 项目总数（含已归档），用于是否允许删除 */
+  projectCount?: number
+}
+
+export function archiveClient(id: string) {
+  return apiRequest<{ archived: true }>(`/clients/${id}/archive`, {
+    method: 'POST',
+  })
+}
+
+export function deleteClient(id: string) {
+  return apiRequest<{ deleted: true }>(`/clients/${id}`, {
+    method: 'DELETE',
+  })
 }
 
 export function fetchClient(id: string) {

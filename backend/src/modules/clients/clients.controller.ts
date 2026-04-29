@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -99,6 +100,42 @@ export class ClientsController {
       xOrganizationId,
     )
     return this.clientsService.updateContact(membership, clientId, contactId, dto)
+  }
+
+  @Post(':id/archive')
+  @ApiHeader({
+    name: 'X-Organization-Id',
+    required: false,
+  })
+  @ApiOperation({ summary: '归档客户（无未归档项目时）' })
+  async archive(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    const membership = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.clientsService.archive(membership, id)
+  }
+
+  @Delete(':id')
+  @ApiHeader({
+    name: 'X-Organization-Id',
+    required: false,
+  })
+  @ApiOperation({ summary: '删除客户（无任何项目时）' })
+  async remove(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    const membership = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.clientsService.remove(membership, id)
   }
 
   @Get(':id')
