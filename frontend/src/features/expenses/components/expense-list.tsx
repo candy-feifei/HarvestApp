@@ -79,18 +79,28 @@ export function ExpenseList({
                 </span>
               </div>
             </div>
-            <ul className="space-y-0">
+            <div
+              className="mb-0 hidden border-b border-border/70 bg-muted/20 px-2 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[6rem_1fr_auto] sm:gap-3"
+              role="row"
+            >
+              <div role="columnheader">Date</div>
+              <div role="columnheader">Project & details</div>
+              <div className="text-right" role="columnheader">
+                Amount
+              </div>
+            </div>
+            <ul className="divide-y divide-border/60" role="list">
               {g.items.map((e) => {
                 const st = statusLabel(e.status)
                 return (
                   <li
                     key={e.id}
-                    className="flex flex-wrap items-start gap-3 border-b border-border/60 py-2.5 last:border-b-0"
+                    className="flex flex-wrap items-start gap-3 py-2.5 sm:grid sm:grid-cols-[6rem_1fr_auto] sm:items-start sm:gap-3 sm:px-0"
                   >
-                    <div className="w-24 shrink-0 text-xs text-muted-foreground sm:text-sm">
+                    <div className="w-24 shrink-0 text-xs text-muted-foreground sm:w-auto sm:pt-0.5 sm:text-sm">
                       {lineDate(e.spentDate)}
                     </div>
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 sm:min-w-0 sm:flex-initial">
                       <p className="text-sm font-medium text-foreground">
                         {e.project.name}
                         <span className="font-normal text-muted-foreground">
@@ -132,30 +142,32 @@ export function ExpenseList({
                         </p>
                       ) : null}
                     </div>
-                    <div className="ml-auto flex items-center gap-1.5">
-                      {e.isLocked ? (
-                        <Lock
-                          className="size-3.5 text-muted-foreground"
-                          aria-label="Locked"
-                        />
+                    <div className="ml-auto flex min-w-0 items-start justify-end gap-1.5 sm:ml-0 sm:shrink-0 sm:flex-col sm:items-end sm:pt-0.5">
+                      <div className="flex items-center gap-1.5">
+                        {e.isLocked ? (
+                          <Lock
+                            className="size-3.5 text-muted-foreground"
+                            aria-label="Locked"
+                          />
+                        ) : null}
+                        <span className="text-sm font-semibold tabular-nums">
+                          {formatMoney(Number(e.amount), currency)}
+                        </span>
+                      </div>
+                      {!e.isLocked &&
+                      onDelete &&
+                      (!currentUserId || e.user.id === currentUserId) ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          className="shrink-0 text-destructive hover:text-destructive"
+                          onClick={() => onDelete(e.id)}
+                        >
+                          Delete
+                        </Button>
                       ) : null}
-                      <span className="text-sm font-semibold tabular-nums">
-                        {formatMoney(Number(e.amount), currency)}
-                      </span>
                     </div>
-                    {!e.isLocked &&
-                    onDelete &&
-                    (!currentUserId || e.user.id === currentUserId) ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => onDelete(e.id)}
-                      >
-                        Delete
-                      </Button>
-                    ) : null}
                   </li>
                 )
               })}

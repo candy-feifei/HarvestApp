@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { ApiError } from '@/lib/api/http'
 import { currencyLabel, SUPPORTED_CURRENCIES } from '@/lib/currencies'
 import { cn } from '@/lib/utils'
@@ -17,6 +17,8 @@ import {
   labelCls,
   selectCls,
   cnTextarea,
+  NET_PRESETS,
+  NET_CUSTOM_PLACEHOLDER_DAYS,
 } from '@/features/clients/client-form-helpers'
 
 export function NewClientPage() {
@@ -246,6 +248,11 @@ export function NewClientPage() {
                 }
                 if (v === 'NET_CUSTOM') {
                   setInvoiceDueMode('NET_DAYS')
+                  setInvoiceNetDays((prev) =>
+                    (NET_PRESETS as readonly number[]).includes(prev)
+                      ? NET_CUSTOM_PLACEHOLDER_DAYS
+                      : prev,
+                  )
                   return
                 }
                 if (v.startsWith('NET_')) {
@@ -373,12 +380,6 @@ export function NewClientPage() {
           >
             Cancel
           </Button>
-          <Link
-            to="/clients"
-            className="ml-auto text-sm text-muted-foreground hover:text-foreground"
-          >
-            Back to list
-          </Link>
         </div>
       </form>
     </div>

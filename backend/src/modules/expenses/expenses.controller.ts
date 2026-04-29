@@ -23,6 +23,7 @@ import { CreateExpenseDto } from './dto/create-expense.dto'
 import { ListExpenseQueryDto } from './dto/list-expense-query.dto'
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto'
 import { UpdateExpenseDto } from './dto/update-expense.dto'
+import { SubmitWeekDto } from '../time-entries/dto/submit-week.dto'
 import { ExpensesService } from './expenses.service'
 
 @ApiTags('expenses')
@@ -61,6 +62,21 @@ export class ExpensesController {
       xOrganizationId,
     )
     return this.expensesService.list(m, user, query)
+  }
+
+  @Post('submit-week')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({ summary: 'Submit unsubmitted expenses in an ISO week for manager approval' })
+  async submitWeek(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+    @Body() body: SubmitWeekDto,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.expensesService.submitWeek(m, user, body)
   }
 
   @Post()

@@ -4,6 +4,9 @@ export type OrganizationContext = {
   organizationId: string
   memberId: string
   systemRole: string
+  firstName: string
+  lastName: string
+  email: string
   organization: {
     id: string
     name: string

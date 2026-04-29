@@ -5,6 +5,10 @@ export type ActiveMembership = {
   organizationId: string;
   memberId: string;
   systemRole: string;
+  /** 展示用；来自 User */
+  firstName: string;
+  lastName: string;
+  email: string;
   organization: {
     id: string;
     name: string;
@@ -16,6 +20,7 @@ type MemberRow = {
   id: string;
   organizationId: string;
   systemRole: string;
+  user: { firstName: string; lastName: string; email: string };
   organization: {
     id: string;
     name: string;
@@ -44,6 +49,7 @@ export class OrganizationContextService {
           status: 'ACTIVE',
         },
         include: {
+          user: { select: { firstName: true, lastName: true, email: true } },
           organization: {
             select: { id: true, name: true, defaultCurrency: true },
           },
@@ -59,6 +65,7 @@ export class OrganizationContextService {
       where: { userId, status: 'ACTIVE' },
       orderBy: { id: 'asc' },
       include: {
+        user: { select: { firstName: true, lastName: true, email: true } },
         organization: {
           select: { id: true, name: true, defaultCurrency: true },
         },
@@ -75,6 +82,9 @@ export class OrganizationContextService {
       organizationId: row.organizationId,
       memberId: row.id,
       systemRole: row.systemRole,
+      firstName: row.user.firstName ?? '',
+      lastName: row.user.lastName ?? '',
+      email: row.user.email ?? '',
       organization: row.organization,
     };
   }
@@ -88,6 +98,7 @@ export class OrganizationContextService {
         where: { userId, status: 'ACTIVE' },
         orderBy: { id: 'asc' },
         include: {
+          user: { select: { firstName: true, lastName: true, email: true } },
           organization: {
             select: { id: true, name: true, defaultCurrency: true },
           },
@@ -123,6 +134,7 @@ export class OrganizationContextService {
           status: 'ACTIVE',
         },
         include: {
+          user: { select: { firstName: true, lastName: true, email: true } },
           organization: {
             select: { id: true, name: true, defaultCurrency: true },
           },

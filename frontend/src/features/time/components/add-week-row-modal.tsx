@@ -65,36 +65,34 @@ export function AddWeekRowModal({
   onAdd,
 }: AddWeekRowModalProps) {
   const [projectId, setProjectId] = useState('')
-  const [taskId, setTaskId] = useState('')
   const [projectOpen, setProjectOpen] = useState(false)
 
-  /** Rows not already on this week; empty set still shows Project/Task fields. */
+  /** Rows not already on this week. */
   const available = useMemo(
     () => assignable.filter((r) => !usedProjectTaskIds.has(r.projectTaskId)),
     [assignable, usedProjectTaskIds],
   )
 
   const projectOptions = useMemo(() => uniqueProjects(available), [available])
-  const taskOptions = useMemo(() => uniqueTasksForProject(available, projectId), [available, projectId])
-
   const selectedProject = useMemo(
     () => projectOptions.find((p) => p.projectId === projectId),
     [projectOptions, projectId],
   )
 
-  const selectedProjectTaskId = useMemo(() => {
-    if (!projectId || !taskId) {
+  /** 同一项目多任务时，取当前周仍可添加的第一条（按任务名排序，与旧版下拉里首项一致） */
+  const projectTaskIdToAdd = useMemo(() => {
+    if (!projectId) {
       return ''
     }
-    return available.find((r) => r.projectId === projectId && r.taskId === taskId)?.projectTaskId ?? ''
-  }, [available, projectId, taskId])
+    const tasks = uniqueTasksForProject(available, projectId)
+    return tasks[0]?.projectTaskId ?? ''
+  }, [available, projectId])
 
   useEffect(() => {
     if (!open) {
       return
     }
     setProjectId('')
-    setTaskId('')
     setProjectOpen(false)
   }, [open])
 
@@ -103,10 +101,10 @@ export function AddWeekRowModal({
   }
 
   const handleAdd = () => {
-    if (!selectedProjectTaskId) {
+    if (!projectTaskIdToAdd) {
       return
     }
-    onAdd(selectedProjectTaskId)
+    onAdd(projectTaskIdToAdd)
     onClose()
   }
 
@@ -128,7 +126,7 @@ export function AddWeekRowModal({
         </div>
         <div className="space-y-4 p-4">
           <div>
-            <div className="mb-1.5 text-sm font-medium text-foreground">Project / Task</div>
+            <div className="mb-1.5 text-sm font-medium text-foreground">Project</div>
             <Popover.Root open={projectOpen} onOpenChange={setProjectOpen}>
               <Popover.Trigger asChild>
                 <button
@@ -167,7 +165,6 @@ export function AddWeekRowModal({
                             type="button"
                             onClick={() => {
                               setProjectId(p.projectId)
-                              setTaskId('')
                               setProjectOpen(false)
                             }}
                             className={cn(
@@ -191,39 +188,13 @@ export function AddWeekRowModal({
               </Popover.Portal>
             </Popover.Root>
           </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="awr-task">
-              Task
-            </label>
-            <select
-              id="awr-task"
-              className={cn(
-                'h-9 w-full rounded-md border border-border bg-white px-2 text-sm text-foreground',
-                'shadow-sm focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none',
-                !projectId && 'cursor-not-allowed opacity-60',
-              )}
-              value={taskId}
-              onChange={(e) => setTaskId(e.target.value)}
-              disabled={!projectId}
-            >
-              <option value="">
-                {!projectId ? '— Select a project first —' : '— Select a task —'}
-              </option>
-              {taskOptions.map((t) => (
-                <option key={t.taskId} value={t.taskId}>
-                  {t.taskName}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-4 py-3">
           <Button
             type="button"
             className="bg-emerald-600 text-white hover:bg-emerald-700"
             onClick={handleAdd}
-            disabled={!selectedProjectTaskId}
+            disabled={!projectTaskIdToAdd}
           >
             Save row
           </Button>

@@ -13,6 +13,46 @@ import { CreateExpenseDto } from './dto/create-expense.dto'
 import { ListExpenseQueryDto } from './dto/list-expense-query.dto'
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto'
 import { UpdateExpenseDto } from './dto/update-expense.dto'
+import { SubmitWeekDto } from '../time-entries/dto/submit-week.dto'
+
+function utcDayStart(ymd: string): Date {
+  const [y, m, d] = ymd.split('-').map((p) => parseInt(p, 10))
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0))
+}
+
+function startOfIsoWeekFromUtcDate(ref: Date): Date {
+  const w = ref.getUTCDay()
+  const add = w === 0 ? -6 : 1 - w
+  return new Date(
+    Date.UTC(
+      ref.getUTCFullYear(),
+      ref.getUTCMonth(),
+      ref.getUTCDate() + add,
+      0,
+      0,
+      0,
+      0,
+    ),
+  )
+}
+
+function addUtcDays(d: Date, n: number): Date {
+  return new Date(
+    Date.UTC(
+      d.getUTCFullYear(),
+      d.getUTCMonth(),
+      d.getUTCDate() + n,
+      0,
+      0,
+      0,
+      0,
+    ),
+  )
+}
+
+function isoWeekExclusiveEndUtc(weekMonday: Date): Date {
+  return addUtcDays(weekMonday, 7)
+}
 
 function d(v: Prisma.Decimal | null | undefined): string | null {
   if (v == null) return null
@@ -347,6 +387,89 @@ export class ExpensesService {
       },
     })
     return this.toExpenseItem(row)
+  }
+
+  /**
+   * 与 Timesheet 周提交共用 approvals 周期：将本周期内未提交的 expense 标为 SUBMITTED 并挂到当前填报窗口。
+   */
+  async submitWeek(
+    membership: ActiveMembership,
+    user: CurrentUserPayload,
+    body: SubmitWeekDto,
+  ) {
+    const dayStart = utcDayStart(body.weekOf)
+    const from = startOfIsoWeekFromUtcDate(dayStart)
+    const toExclusive = addUtcDays(from, 7)
+    const weekLastDayStart = addUtcDays(from, 6)
+    const orgId = membership.organizationId
+
+    let window = await this.prisma.approval.findFirst({
+      where: {
+        submitterId: user.userId,
+        periodStart: { lte: from },
+        periodEnd: { gte: weekLastDayStart },
+      },
+      orderBy: [{ periodStart: 'desc' }, { id: 'desc' }],
+    })
+    if (!window) {
+      window = await this.prisma.approval.create({
+        data: {
+          submitterId: user.userId,
+          status: 'PENDING',
+          periodStart: from,
+          periodEnd: isoWeekExclusiveEndUtc(from),
+        },
+      })
+    } else if (window.status === 'WITHDRAWN' || window.status === 'REJECTED') {
+      const periodEnd = isoWeekExclusiveEndUtc(from)
+      await this.prisma.approval.update({
+        where: { id: window.id },
+        data: { status: 'PENDING', periodEnd },
+      })
+      window = { ...window, status: 'PENDING', periodEnd }
+    }
+    if (window.status === 'APPROVED') {
+      throw new BadRequestException(
+        'This approval period is already approved; expenses for this week cannot be submitted again.',
+      )
+    }
+
+    const outOfWindow = await this.prisma.expense.findFirst({
+      where: {
+        userId: user.userId,
+        project: { organizationId: orgId },
+        spentDate: { gte: from, lt: toExclusive },
+        OR: [
+          { spentDate: { lt: window.periodStart } },
+          { spentDate: { gt: window.periodEnd } },
+        ],
+      },
+      select: { id: true },
+    })
+    if (outOfWindow) {
+      throw new BadRequestException(
+        'Some expenses in this week fall outside the current approval period. Adjust dates and try again.',
+      )
+    }
+
+    const r = await this.prisma.expense.updateMany({
+      where: {
+        userId: user.userId,
+        project: { organizationId: orgId },
+        spentDate: { gte: from, lt: toExclusive },
+        status: 'UNSUBMITTED',
+        isLocked: false,
+      },
+      data: {
+        status: 'SUBMITTED',
+        approvalId: window.id,
+      },
+    })
+    return {
+      submittedCount: r.count,
+      weekFrom: from.toISOString(),
+      toExclusive: toExclusive.toISOString(),
+    }
   }
 
   async remove(

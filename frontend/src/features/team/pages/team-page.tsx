@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { DayPicker } from 'react-day-picker'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Popover } from 'radix-ui'
 import { fetchOrganizationContext } from '@/features/clients/api'
 import {
   archiveTeamMember,
@@ -13,7 +15,15 @@ import {
 import { TeamRolesPanel } from '@/features/team/components/team-roles-panel'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, Clock, Pin, UserPlus } from 'lucide-react'
+import {
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Pin,
+  UserPlus,
+} from 'lucide-react'
+import 'react-day-picker/style.css'
 
 const tabBase =
   'inline-flex h-9 min-w-0 items-center border-b-2 px-1 pb-0.5 text-sm font-medium transition-colors'
@@ -62,14 +72,43 @@ function addUtcDays(d: Date, n: number): Date {
   )
 }
 
-function formatWeekRange(weekOf: string): string {
+function formatMmDdYyyyUtc(d: Date): string {
+  return d.toLocaleDateString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/** Harvest 风格：This week / Last week / 否则仅显示 mm/dd/yyyy 范围 */
+function weekNavLabel(weekOf: string, nowRef: Date = new Date()): string {
   const from = utcDayStart(weekOf)
   const to = addUtcDays(from, 6)
-  const y = from.getUTCFullYear()
-  const d1 = from.getUTCDate()
-  const m2 = to.getUTCMonth() + 1
-  const d2 = to.getUTCDate()
-  return `This week ${d1} – ${d2} ${m2} ${y}`
+  const range = `${formatMmDdYyyyUtc(from)} – ${formatMmDdYyyyUtc(to)}`
+  const thisStart = toYmd(
+    startOfIsoWeekFromUtcDate(
+      new Date(
+        Date.UTC(
+          nowRef.getUTCFullYear(),
+          nowRef.getUTCMonth(),
+          nowRef.getUTCDate(),
+          0,
+          0,
+          0,
+          0,
+        ),
+      ),
+    ),
+  )
+  const lastStart = toYmd(addUtcDays(utcDayStart(thisStart), -7))
+  if (weekOf === thisStart) {
+    return `This week · ${range}`
+  }
+  if (weekOf === lastStart) {
+    return `Last week · ${range}`
+  }
+  return range
 }
 
 function initials(first: string, last: string) {
@@ -80,6 +119,11 @@ function initials(first: string, last: string) {
 
 function hoursFmt(n: number) {
   return (Math.round(n * 100) / 100).toFixed(2)
+}
+
+function ymdToLocalDate(ymd: string): Date {
+  const [y, m, d] = ymd.split('-').map((p) => parseInt(p, 10))
+  return new Date(y, m - 1, d)
 }
 
 const noTeamManagePermTitle =
@@ -229,7 +273,7 @@ const memberListGridClass =
   'grid grid-cols-[1.5rem_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto] items-center gap-2 border-b border-border/80 px-3 py-2.5 text-sm sm:px-4'
 
 const memberListHeaderGridClass =
-  'grid grid-cols-[1.5rem_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto] gap-2 border-b border-border bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground sm:px-4'
+  'grid grid-cols-[1.5rem_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto] items-center gap-2 border-b border-border bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground sm:px-4'
 
 function MemberListRow({
   m,
@@ -284,14 +328,14 @@ function MemberListRow({
           </div>
         </div>
       </div>
-      <span className="tabular-nums text-foreground">{hoursFmt(m.hours)}</span>
-      <span className="tabular-nums text-foreground">
+      <span className="text-right tabular-nums text-foreground">{hoursFmt(m.hours)}</span>
+      <span className="text-right tabular-nums text-foreground">
         {Math.round(m.utilizationPercent)}%
       </span>
-      <span className="tabular-nums text-muted-foreground">
+      <span className="text-right tabular-nums text-muted-foreground">
         {hoursFmt(m.weeklyCapacity)}
       </span>
-      <span className="tabular-nums text-muted-foreground">
+      <span className="text-right tabular-nums text-muted-foreground">
         {hoursFmt(m.billableHours)}
       </span>
       <div className="text-right">
@@ -315,6 +359,7 @@ function MembersPanel({
   weekOf,
   onPrevWeek,
   onNextWeek,
+  onSelectWeekYmd,
   onEditMember,
   onPinToggle,
   onArchiveMember,
@@ -328,6 +373,7 @@ function MembersPanel({
   weekOf: string
   onPrevWeek: () => void
   onNextWeek: () => void
+  onSelectWeekYmd: (ymd: string) => void
   onEditMember: (memberId: string) => void
   onPinToggle: (memberId: string, nextPinned: boolean) => void
   onArchiveMember: (memberId: string) => void
@@ -337,6 +383,7 @@ function MembersPanel({
   loading: boolean
   isError: boolean
 }) {
+  const [calOpen, setCalOpen] = useState(false)
   const rows = items ?? []
   const pinnedRows = rows.filter((r) => Boolean(r.isPinned))
   const employeeRows = rows.filter((r) => !r.isPinned)
@@ -362,44 +409,101 @@ function MembersPanel({
   return (
     <div className="mt-6">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <button
             type="button"
             onClick={onPrevWeek}
-            className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-white text-foreground hover:bg-muted/40"
+            className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-white text-foreground hover:bg-muted/40"
             aria-label="Previous week"
           >
             <ChevronLeft className="size-4" aria-hidden />
           </button>
-          <span className="min-w-0">{formatWeekRange(weekOf)}</span>
+          <span className="min-w-0 text-foreground">
+            {weekNavLabel(weekOf)}
+          </span>
           <button
             type="button"
             onClick={onNextWeek}
-            className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-white text-foreground hover:bg-muted/40"
+            className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-white text-foreground hover:bg-muted/40"
             aria-label="Next week"
           >
             <ChevronRight className="size-4" aria-hidden />
           </button>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-          <Button
-            type="button"
-            asChild
-            className="h-9 w-full gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto"
-          >
-            <Link to="/team/invite">
-              <UserPlus className="size-4" strokeWidth={2.25} aria-hidden />
-              Invite person
-            </Link>
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-9 px-2 text-sm text-primary hover:bg-transparent hover:underline"
-            asChild
-          >
-            <Link to="/team/archived">View archived people</Link>
-          </Button>
+          <Popover.Root open={calOpen} onOpenChange={setCalOpen}>
+            <Popover.Trigger asChild>
+              <button
+                type="button"
+                className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-white text-foreground hover:bg-muted/40"
+                aria-label="Pick a week"
+              >
+                <CalendarIcon className="size-4" aria-hidden />
+              </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content
+                className="z-50 w-[min(100vw-1rem,20rem)] rounded-lg border border-border bg-popover p-0 text-popover-foreground shadow-md outline-none"
+                sideOffset={6}
+                align="start"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+              >
+                <DayPicker
+                  key={weekOf}
+                  mode="single"
+                  weekStartsOn={1}
+                  showWeekNumber={false}
+                  selected={ymdToLocalDate(weekOf)}
+                  defaultMonth={ymdToLocalDate(weekOf)}
+                  onSelect={(d) => {
+                    if (!d) {
+                      return
+                    }
+                    const utc = new Date(
+                      Date.UTC(
+                        d.getFullYear(),
+                        d.getMonth(),
+                        d.getDate(),
+                        0,
+                        0,
+                        0,
+                        0,
+                      ),
+                    )
+                    onSelectWeekYmd(toYmd(startOfIsoWeekFromUtcDate(utc)))
+                    setCalOpen(false)
+                  }}
+                  className="p-2 [--cell-size:2.25rem]"
+                  modifiersClassNames={{
+                    selected:
+                      'bg-amber-100/90 font-medium !text-foreground ring-1 ring-foreground/15',
+                  }}
+                  classNames={{
+                    months: 'flex',
+                    month: 'w-full',
+                    month_caption:
+                      'mb-2 flex h-8 w-full items-center justify-center',
+                    button_previous: cn(
+                      'inline-flex h-7 w-7 items-center justify-center rounded-md border-0 text-foreground',
+                      'hover:bg-muted/60 focus-visible:outline focus-visible:ring-2 focus-visible:ring-ring',
+                    ),
+                    button_next: cn(
+                      'inline-flex h-7 w-7 items-center justify-center rounded-md border-0 text-foreground',
+                      'hover:bg-muted/60 focus-visible:outline focus-visible:ring-2 focus-visible:ring-ring',
+                    ),
+                    weekday:
+                      'h-7 w-9 p-0 text-center text-xs font-medium text-foreground/80',
+                    day: 'size-[--cell-size] p-0',
+                    day_button: cn(
+                      'inline-flex h-full w-full min-w-9 max-w-9 items-center justify-center',
+                      'rounded-md text-sm tabular-nums text-foreground',
+                      'hover:bg-muted/50',
+                    ),
+                    today: 'text-primary',
+                    outside: 'text-muted-foreground/70',
+                  }}
+                />
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
         </div>
       </div>
 
@@ -462,13 +566,13 @@ function MembersPanel({
                 Pinned employees ({pinnedRows.length})
               </div>
               <div className={memberListHeaderGridClass}>
-                <span />
-                <span>Team member</span>
-                <span>Hours</span>
-                <span>Utilization</span>
-                <span>Capacity</span>
-                <span>Billable hours</span>
-                <span className="text-right">Actions</span>
+                <span className="min-w-0" aria-hidden />
+                <span className="min-w-0">Team member</span>
+                <span className="min-w-0 text-right">Hours</span>
+                <span className="min-w-0 text-right">Utilization</span>
+                <span className="min-w-0 text-right">Capacity</span>
+                <span className="min-w-0 text-right">Billable hours</span>
+                <span className="min-w-0 text-right">Actions</span>
               </div>
               {pinnedRows.map((m) => (
                 <MemberListRow
@@ -490,13 +594,13 @@ function MembersPanel({
               Employees ({employeeRows.length})
             </div>
             <div className={memberListHeaderGridClass}>
-              <span />
-              <span>Team member</span>
-              <span>Hours</span>
-              <span>Utilization</span>
-              <span>Capacity</span>
-              <span>Billable hours</span>
-              <span className="text-right">Actions</span>
+              <span className="min-w-0" aria-hidden />
+              <span className="min-w-0">Team member</span>
+              <span className="min-w-0 text-right">Hours</span>
+              <span className="min-w-0 text-right">Utilization</span>
+              <span className="min-w-0 text-right">Capacity</span>
+              <span className="min-w-0 text-right">Billable hours</span>
+              <span className="min-w-0 text-right">Actions</span>
             </div>
             {employeeRows.length === 0 ? (
               <p className="px-3 py-6 text-center text-sm text-muted-foreground sm:px-4">
@@ -623,6 +727,28 @@ export function TeamPage() {
             Manage people, roles, and weekly capacity for your team.
           </p>
         </div>
+        {tab === 'members' ? (
+          <div className="flex w-full flex-col gap-2 sm:mt-0.5 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              type="button"
+              className="h-9 w-full shrink-0 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto"
+              asChild
+            >
+              <Link to="/team/invite">
+                <UserPlus className="size-4" strokeWidth={2.25} aria-hidden />
+                Invite person
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 w-full px-2 text-sm text-primary hover:bg-transparent hover:underline sm:w-auto"
+              asChild
+            >
+              <Link to="/team/archived">View archived people</Link>
+            </Button>
+          </div>
+        ) : null}
         {tab === 'roles' && canManageTeam ? (
           <Button
             type="button"
@@ -710,6 +836,7 @@ export function TeamPage() {
               const next = addUtcDays(d, 7)
               setWeekOf(toYmd(startOfIsoWeekFromUtcDate(next)))
             }}
+            onSelectWeekYmd={setWeekOf}
             onEditMember={(memberId) => navigate(`/team/members/${memberId}/edit`)}
             onPinToggle={(memberId, nextPinned) => {
               pinMut.mutate({ memberId, isPinned: nextPinned })

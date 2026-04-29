@@ -59,20 +59,22 @@ export function TrackTimeModal({
   onDelete,
   isDeleting = false,
 }: TrackTimeModalProps) {
-  const [projectId, setProjectId] = useState('')
   const [projectTaskId, setProjectTaskId] = useState('')
   const [timeStr, setTimeStr] = useState('0:00')
   const [notes, setNotes] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  const selectedProject = useMemo(
-    () => projects.find((p) => p.projectId === projectId) ?? null,
-    [projects, projectId],
-  )
-  const selectedTask = useMemo(
-    () => selectedProject?.tasks.find((t) => t.projectTaskId === projectTaskId) ?? null,
-    [selectedProject, projectTaskId],
-  )
+  const projectTaskLine = useMemo(() => {
+    for (const p of projects) {
+      const t = p.tasks.find((x) => x.projectTaskId === projectTaskId)
+      if (t) {
+        return { project: p, task: t }
+      }
+    }
+    return null
+  }, [projects, projectTaskId])
+  const selectedProject = projectTaskLine?.project ?? null
+  const selectedTask = projectTaskLine?.task ?? null
 
   const hoursDecimal = useMemo(() => parseClockToDecimal(timeStr), [timeStr])
   const hasManualHours = hoursDecimal > 0.0001
@@ -83,7 +85,6 @@ export function TrackTimeModal({
     }
     setShowDeleteConfirm(false)
     if (editing) {
-      setProjectId(editing.projectId)
       setProjectTaskId(editing.projectTaskId)
       setTimeStr(formatDecimalHoursAsClock(editing.hours))
       setNotes(editing.notes ?? '')
@@ -98,45 +99,34 @@ export function TrackTimeModal({
       return
     }
     if (projects.length === 0) {
-      setProjectId('')
       setProjectTaskId('')
       return
     }
-    setProjectId((cur) => {
-      if (cur && projects.some((p) => p.projectId === cur)) {
-        return cur
+    setProjectTaskId((cur) => {
+      for (const p of projects) {
+        if (p.tasks.some((t) => t.projectTaskId === cur)) {
+          return cur
+        }
       }
-      return projects[0]!.projectId
+      return projects[0]?.tasks[0]?.projectTaskId ?? ''
     })
   }, [open, editing, projects])
 
-  useEffect(() => {
-    if (!open || editing) {
-      return
-    }
-    if (!projectId) {
-      return
-    }
-    const p = projects.find((x) => x.projectId === projectId)
-    if (!p) {
-      return
-    }
-    setProjectTaskId((cur) => {
-      if (cur && p.tasks.some((t) => t.projectTaskId === cur)) {
-        return cur
+  const projectTaskOptions = useMemo(() => {
+    const out: { value: string; label: string }[] = []
+    for (const p of projects) {
+      for (const t of p.tasks) {
+        out.push({
+          value: t.projectTaskId,
+          label: `${p.clientName} — ${p.name} — ${t.taskName}`,
+        })
       }
-      return p.tasks[0]?.projectTaskId ?? ''
-    })
-  }, [open, editing, projects, projectId])
+    }
+    return out
+  }, [projects])
 
   if (!open) {
     return null
-  }
-
-  const handleProjectChange = (id: string) => {
-    setProjectId(id)
-    const p = projects.find((x) => x.projectId === id)
-    setProjectTaskId(p?.tasks[0]?.projectTaskId ?? '')
   }
 
   const handleSave = async () => {
@@ -197,54 +187,33 @@ export function TrackTimeModal({
         </div>
         <div className="space-y-4 p-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="track-project">
-              Project
-            </label>
-            <select
-              id="track-project"
-              className={selectClassName}
-              value={projectId}
-              onChange={(e) => handleProjectChange(e.target.value)}
-              disabled={Boolean(editing) || disabledInputs}
+            <label
+              className="mb-1.5 block text-sm font-medium text-foreground"
+              htmlFor="track-project-task"
             >
-              {optionsLoading ? (
-                <option value="">Loading projects…</option>
-              ) : projects.length === 0 ? (
-                <option value="">— No projects —</option>
-              ) : (
-                projects.map((p) => (
-                  <option key={p.projectId} value={p.projectId}>
-                    {p.clientName} — {p.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="track-task">
-              Task
+              Project / task
             </label>
             <select
-              id="track-task"
+              id="track-project-task"
               className={selectClassName}
               value={projectTaskId}
               onChange={(e) => setProjectTaskId(e.target.value)}
-              disabled={Boolean(editing) || disabledInputs || !selectedProject}
+              disabled={Boolean(editing) || disabledInputs}
             >
               {optionsLoading ? (
-                <option value="">Loading tasks…</option>
-              ) : !selectedProject || selectedProject.tasks.length === 0 ? (
-                <option value="">{!projectId ? '— Select a project first —' : '— No tasks —'}</option>
+                <option value="">Loading…</option>
+              ) : projectTaskOptions.length === 0 ? (
+                <option value="">— No project tasks —</option>
               ) : (
-                selectedProject.tasks.map((t) => (
-                  <option key={t.projectTaskId} value={t.projectTaskId}>
-                    {t.taskName}
+                projectTaskOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
                   </option>
                 ))
               )}
             </select>
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             <div className="min-w-0 flex-1">
               <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="notes">
                 Notes (optional)
@@ -258,16 +227,16 @@ export function TrackTimeModal({
                 onChange={(e) => setNotes(e.target.value)}
               />
             </div>
-            <div className="flex w-24 shrink-0 flex-col items-center">
+            <div className="flex w-full shrink-0 flex-col items-stretch sm:w-28 sm:items-center">
               <label
-                className="mb-1.5 w-full text-center text-sm font-medium text-foreground"
+                className="mb-1.5 w-full text-left text-sm font-medium text-foreground sm:text-center"
                 htmlFor="time"
               >
                 Time
               </label>
               <input
                 id="time"
-                className="w-full border-0 border-b-2 border-border bg-transparent py-1 text-center text-3xl font-medium tabular-nums tracking-tight text-foreground"
+                className="w-full rounded-md border-2 border-border bg-white py-2 text-center text-3xl font-medium tabular-nums tracking-tight text-foreground shadow-sm sm:max-w-[7rem]"
                 value={timeStr}
                 onChange={(e) => setTimeStr(e.target.value)}
                 inputMode="text"

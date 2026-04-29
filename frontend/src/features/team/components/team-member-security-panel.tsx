@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { changePasswordRequest } from '@/features/auth/api'
+import { changePasswordRequest, forgotPasswordRequest } from '@/features/auth/api'
 import { setTeamMemberPassword } from '@/features/team/api'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,6 +14,7 @@ type Props = {
   memberId: string
   isViewingSelf: boolean
   canSetOtherPassword: boolean
+  workEmail: string
 }
 
 export function TeamMemberSecurityPanel({
@@ -21,6 +22,7 @@ export function TeamMemberSecurityPanel({
   memberId,
   isViewingSelf,
   canSetOtherPassword,
+  workEmail,
 }: Props) {
   const qc = useQueryClient()
   const [selfCurrent, setSelfCurrent] = useState('')
@@ -31,6 +33,7 @@ export function TeamMemberSecurityPanel({
   const [otherNew, setOtherNew] = useState('')
   const [otherConfirm, setOtherConfirm] = useState('')
   const [otherErr, setOtherErr] = useState<string | null>(null)
+  const [resetLinkMsg, setResetLinkMsg] = useState<string | null>(null)
 
   const selfMut = useMutation({
     mutationFn: () =>
@@ -60,6 +63,18 @@ export function TeamMemberSecurityPanel({
     },
     onError: (e: Error) => {
       setOtherErr(e.message || 'Could not set password')
+    },
+  })
+
+  const resetLinkMut = useMutation({
+    mutationFn: () => forgotPasswordRequest(workEmail.trim()),
+    onSuccess: () => {
+      setResetLinkMsg(
+        'If outbound email is configured, a reset link was sent to the work email address.',
+      )
+    },
+    onError: (e: Error) => {
+      setResetLinkMsg(e.message || 'Could not request reset link.')
     },
   })
 
@@ -175,7 +190,35 @@ export function TeamMemberSecurityPanel({
             </Button>
           </div>
         </form>
-      ) : canSetOtherPassword ? (
+      ) : null}
+
+      {isViewingSelf ? (
+        <div className="mt-8 max-w-md space-y-3 border-t border-border pt-6">
+          <h2 className="text-base font-semibold text-foreground">Reset password</h2>
+          <p className="text-sm text-muted-foreground">
+            Get a sign-in link sent to your work email ({workEmail || '—'}).
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 border-border"
+            disabled={!workEmail.trim() || resetLinkMut.isPending}
+            onClick={() => {
+              setResetLinkMsg(null)
+              resetLinkMut.mutate()
+            }}
+          >
+            {resetLinkMut.isPending ? 'Sending…' : 'Send reset link'}
+          </Button>
+          {resetLinkMsg ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              {resetLinkMsg}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!isViewingSelf && canSetOtherPassword ? (
         <form onSubmit={onOtherSubmit} className="mt-6 max-w-md space-y-4">
           <h2 className="text-base font-semibold text-foreground">
             Set new password
@@ -232,14 +275,42 @@ export function TeamMemberSecurityPanel({
             </Button>
           </div>
         </form>
-      ) : (
+      ) : null}
+
+      {!isViewingSelf && canSetOtherPassword ? (
+        <div className="mt-8 max-w-md space-y-3 border-t border-border pt-6">
+          <h2 className="text-base font-semibold text-foreground">Reset password</h2>
+          <p className="text-sm text-muted-foreground">
+            Send a password setup link to {workEmail || 'this person’s work email'}.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 border-border"
+            disabled={!workEmail.trim() || resetLinkMut.isPending}
+            onClick={() => {
+              setResetLinkMsg(null)
+              resetLinkMut.mutate()
+            }}
+          >
+            {resetLinkMut.isPending ? 'Sending…' : 'Send reset link'}
+          </Button>
+          {resetLinkMsg ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              {resetLinkMsg}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!isViewingSelf && !canSetOtherPassword ? (
         <p className="mt-6 text-sm text-muted-foreground">
           Only account administrators can set or change another person&apos;s
           sign-in password. You can use{' '}
           <strong>Basic info</strong> to resend the invitation, or ask an
           administrator to update the password on this page.
         </p>
-      )}
+      ) : null}
     </div>
   )
 }

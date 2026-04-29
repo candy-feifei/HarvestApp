@@ -853,9 +853,11 @@ export class OrganizationService {
           : current?.costRate ?? new Prisma.Decimal(0);
 
       if (current) {
+        // 上一条的结束时间应为「新费率生效前一瞬间」，避免与下一段起点同一天造成重叠/歧义
+        const endExclusive = new Date(start.getTime() - 1);
         await tx.rateHistory.update({
           where: { id: current.id },
-          data: { endDate: start },
+          data: { endDate: endExclusive },
         });
       }
 

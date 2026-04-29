@@ -153,12 +153,12 @@ function TaskRow({
             aria-label={`Select ${task.name}`}
           />
         </label>
-        <div className="min-w-0">
-          <span className="text-[15px] font-semibold text-foreground">
+        <div className="min-w-0 flex flex-nowrap items-center gap-2">
+          <span className="truncate text-[15px] font-semibold text-foreground">
             {task.name}
           </span>
           {task.isBillable ? (
-            <span className="ms-2 inline-flex rounded border border-border bg-white px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+            <span className="inline-flex shrink-0 rounded border border-border bg-white px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
               Billable
             </span>
           ) : null}

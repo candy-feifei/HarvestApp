@@ -164,16 +164,8 @@ export function TeamMemberPermissionsPanel({ member, canEdit }: Props) {
         {firstName}&apos;s permissions
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        This setting determines what {firstName} can see and do in this account.{' '}
-        <a
-          href="https://help.getharvest.com"
-          target="_blank"
-          rel="noreferrer"
-          className="text-primary underline-offset-2 hover:underline"
-        >
-          Learn more about what people can access
-        </a>
-        .
+        This setting determines what {firstName} can see and do in this
+        account.
       </p>
 
       {!canEdit ? (

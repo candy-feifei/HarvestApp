@@ -286,6 +286,17 @@ function ApprovalsPageBody({
     [period, anchor, custom],
   )
 
+  const isViewingCurrentWeek = useMemo(() => {
+    if (period !== 'WEEK') {
+      return false
+    }
+    const cur = computeDateRange('WEEK', new Date(), null)
+    return (
+      from.getTime() === cur.from.getTime() &&
+      to.getTime() === cur.to.getTime()
+    )
+  }, [period, from, to])
+
   const viewQuery: ApprovalsViewQuery = useMemo(
     () => ({
       from: from.toISOString(),
@@ -501,9 +512,11 @@ function ApprovalsPageBody({
                 <ChevronRight className="size-4" />
               </button>
             </div>
-            <button type="button" className={linkCls} onClick={onReturnCurrent}>
-              {returnLinkWording(period)}
-            </button>
+            {!isViewingCurrentWeek ? (
+              <button type="button" className={linkCls} onClick={onReturnCurrent}>
+                {returnLinkWording(period)}
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">

@@ -71,7 +71,12 @@ export function formatIsoWeekRangeEn(dayKeys: string[]): string {
   const d6 = dayKeys[6] ?? d0
   const start = new Date(`${d0}T12:00:00.000Z`)
   const end = new Date(`${d6}T12:00:00.000Z`)
-  const s = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-  const e = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const o: Intl.DateTimeFormatOptions = {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  }
+  const s = start.toLocaleDateString('en-GB', o)
+  const e = end.toLocaleDateString('en-GB', { ...o, year: 'numeric' })
   return `${s} – ${e}`
 }

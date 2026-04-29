@@ -12,6 +12,8 @@ import {
   labelCls,
   selectCls,
   cnTextarea,
+  NET_PRESETS,
+  NET_CUSTOM_PLACEHOLDER_DAYS,
 } from '@/features/clients/client-form-helpers'
 import {
   fetchClient,
@@ -326,16 +328,18 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
           >
             Cancel
           </Button>
-          <Link
-            to="/clients"
-            className="ml-auto text-sm text-muted-foreground hover:text-foreground"
-          >
-            Back to list
-          </Link>
         </div>
       </form>
 
       <aside className="space-y-3 lg:sticky lg:top-0">
+        <div className="flex flex-col gap-2">
+          <Button className="h-9 w-full" asChild>
+            <Link to={`/projects/new?clientId=${clientId}`}>New project</Link>
+          </Button>
+          <Button variant="outline" className="h-9 w-full border-border" asChild>
+            <Link to="/projects">View all projects</Link>
+          </Button>
+        </div>
         <div className="rounded-lg border border-sky-200/90 bg-sky-50/90 px-4 py-3 text-sm">
           <p className="font-semibold text-sky-950">Active projects</p>
           {client.activeProjects && client.activeProjects.length > 0 ? (

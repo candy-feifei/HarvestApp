@@ -14,6 +14,9 @@ const membership: ActiveMembership = {
   organizationId: 'org-1',
   memberId: 'm-1',
   systemRole: 'MEMBER',
+  firstName: 'T',
+  lastName: 'U',
+  email: 't@u.com',
   organization: { id: 'org-1', name: 'Test Org', defaultCurrency: 'USD' },
 }
 

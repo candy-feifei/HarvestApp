@@ -10,7 +10,10 @@ import {
   deleteExpense,
   fetchExpenseFormOptions,
   listExpenses,
+  submitExpenseWeek,
 } from '@/features/expenses/api'
+import { startOfIsoWeekYmd } from '@/features/time/time-range'
+import { todayUtcYmd } from '@/features/time/time-format'
 import { listTeamMembers } from '@/features/team/api'
 import { CategoryManager } from '@/features/expenses/components/category-manager'
 import { ExpenseList } from '@/features/expenses/components/expense-list'
@@ -69,6 +72,13 @@ export function ExpensesPage() {
 
   const delMut = useMutation({
     mutationFn: (id: string) => deleteExpense(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    },
+  })
+
+  const submitWeekMut = useMutation({
+    mutationFn: () => submitExpenseWeek(startOfIsoWeekYmd(todayUtcYmd())),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['expenses'] })
     },
@@ -202,6 +212,19 @@ export function ExpensesPage() {
                 <Plus className="size-4" />
                 Track expense
               </Button>
+              {scope === 'self' || scope === 'all' ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5 border-border"
+                  disabled={submitWeekMut.isPending}
+                  onClick={() => submitWeekMut.mutate()}
+                >
+                  {submitWeekMut.isPending
+                    ? 'Submitting…'
+                    : 'Submit week for approval'}
+                </Button>
+              ) : null}
             </>
           ) : (
             <Button

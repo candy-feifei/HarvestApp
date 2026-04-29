@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ChevronDown, LogOut, Timer } from 'lucide-react'
 import {
@@ -9,12 +10,21 @@ import {
   emailToInitials,
   parseJwtPayloadJson,
 } from '@/lib/auth/jwt-payload'
+import { fetchOrganizationContext } from '@/features/clients/api'
+import { fetchApprovalsView } from '@/features/approvals/api'
+import { computeDateRange } from '@/features/approvals/period'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const brand = {
   /** 参考线稿主色 */
   primary: '#0061FF',
+}
+
+function nameInitials(first: string, last: string) {
+  const a = (first.trim()[0] ?? '').toUpperCase()
+  const b = (last.trim()[0] ?? '').toUpperCase()
+  return `${a}${b}` || '?'
 }
 
 function isSidebarItemActive(pathname: string, to: string) {
@@ -31,12 +41,50 @@ export function AppSidebar() {
   const { accessToken, logout } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const { data: org } = useQuery({
+    queryKey: ['organization', 'context'],
+    queryFn: fetchOrganizationContext,
+  })
   const payload = parseJwtPayloadJson(accessToken)
-  const email = payload?.email ?? ''
-  const displayName = email
-    ? email.split('@')[0]!.replace(/[._-]/g, ' ')
-    : 'User'
-  const initials = email ? emailToInitials(email) : 'U'
+  const emailFallback = payload?.email ?? ''
+  const firstName = org?.firstName?.trim() || ''
+  const lastName = org?.lastName?.trim() || ''
+  const workEmail = org?.email || emailFallback
+  const displayName =
+    [firstName, lastName].filter(Boolean).join(' ').trim() || workEmail
+  const initials =
+    firstName || lastName
+      ? nameInitials(firstName || ' ', lastName || ' ')
+      : emailFallback
+        ? emailToInitials(emailFallback)
+        : 'U'
+  const isApprover =
+    org &&
+    (org.systemRole === 'ADMINISTRATOR' || org.systemRole === 'MANAGER')
+  const to = new Date()
+  const from = new Date(to)
+  from.setUTCFullYear(from.getUTCFullYear() - 1)
+  to.setUTCFullYear(to.getUTCFullYear() + 1)
+  const { data: approvalPending = 0 } = useQuery({
+    queryKey: [
+      'approvals',
+      'nav-pending',
+      org?.organizationId,
+      from.toISOString().slice(0, 10),
+    ],
+    queryFn: () =>
+      fetchApprovalsView(
+        {
+          from: from.toISOString(),
+          to: to.toISOString(),
+          groupBy: 'PERSON',
+          entryStatus: 'SUBMITTED',
+        },
+        org!.organizationId,
+      ),
+    enabled: Boolean(isApprover && org),
+    select: (v) => v.rows.filter((r) => r.hasApprovableSubmitted).length,
+  })
 
   function handleLogout() {
     logout()
@@ -48,7 +96,7 @@ export function AppSidebar() {
       <button
         type="button"
         onClick={() => navigate('/')}
-        className="flex h-[56px] items-center gap-3 border-b border-border px-4 text-left transition-opacity hover:opacity-90"
+        className="flex h-[56px] cursor-pointer items-center gap-3 border-b border-border px-4 text-left transition-opacity hover:opacity-90"
       >
         <div
           className="flex size-9 items-center justify-center rounded-lg text-white shadow-sm"
@@ -74,12 +122,16 @@ export function AppSidebar() {
               {section.items.map((item) => {
                 const Icon = item.icon
                 const isActive = isSidebarItemActive(pathname, item.to)
+                const badge =
+                  item.id === 'approvals' && isApprover && approvalPending > 0
+                    ? approvalPending
+                    : undefined
                 return (
                   <li key={item.id}>
                     <Link
                       to={item.to}
                       className={cn(
-                        'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium transition-colors',
+                        'group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium transition-colors',
                         !isActive && [
                           'text-muted-foreground',
                           'hover:bg-muted/80 hover:text-foreground',
@@ -100,20 +152,19 @@ export function AppSidebar() {
                         aria-hidden
                       />
                       <span className="min-w-0 flex-1">{item.title}</span>
-                      {item.id === 'approvals' &&
-                        (item.pendingCount ?? 0) > 0 && (
-                          <span
-                            className={cn(
-                              'flex min-w-6 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
-                              isActive
-                                ? 'bg-white/20 text-white'
-                                : 'bg-[#0061FF] text-white',
-                            )}
-                            title="Pending"
-                          >
-                            {item.pendingCount}
-                          </span>
-                        )}
+                      {item.id === 'approvals' && badge != null && badge > 0 && (
+                        <span
+                          className={cn(
+                            'flex min-w-6 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
+                            isActive
+                              ? 'bg-white/20 text-white'
+                              : 'bg-[#0061FF] text-white',
+                          )}
+                          title="Pending"
+                        >
+                          {badge}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 )
@@ -132,7 +183,7 @@ export function AppSidebar() {
               key={item.id}
               to={item.to}
               className={cn(
-                'flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors',
+                'flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors',
                 active
                   ? 'font-medium text-[#0061FF]'
                   : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground',
@@ -161,7 +212,7 @@ export function AppSidebar() {
                 {displayName}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {email || 'Signed in'}
+                {workEmail || 'Signed in'}
               </p>
             </div>
             <ChevronDown
@@ -174,7 +225,7 @@ export function AppSidebar() {
         <Button
           type="button"
           variant="ghost"
-          className="h-9 w-full justify-start gap-2 rounded-lg px-2 text-[13px] font-normal text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+          className="h-9 w-full cursor-pointer justify-start gap-2 rounded-lg px-2 text-[13px] font-normal text-muted-foreground hover:bg-muted/80 hover:text-foreground"
           onClick={handleLogout}
         >
           <LogOut className="size-4" strokeWidth={1.75} aria-hidden />

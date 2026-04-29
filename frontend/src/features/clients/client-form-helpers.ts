@@ -1,5 +1,8 @@
 export const NET_PRESETS = [15, 30, 45, 60] as const
 
+/** 选择「Custom」时若当前为预设天数，需改成非预设值，否则 select 会显示为 Net 15/30 而非 custom */
+export const NET_CUSTOM_PLACEHOLDER_DAYS = 14
+
 export function cnTextarea(base: string) {
   return `${base} min-h-[100px] resize-y`
 }

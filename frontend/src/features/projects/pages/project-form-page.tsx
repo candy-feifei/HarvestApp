@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { fetchOrganizationContext } from '@/features/clients/api'
@@ -8,6 +8,12 @@ import { listTeamMembers } from '@/features/team/api'
 import { listTasks, type TaskListItem } from '@/features/tasks/api'
 import { ApiError } from '@/lib/api/http'
 import { cn } from '@/lib/utils'
+import {
+  cnTextarea,
+  fieldWrap,
+  inputCls,
+  labelCls,
+} from '@/features/clients/client-form-helpers'
 import {
   createProject,
   formValuesToCreatePayload,
@@ -27,9 +33,6 @@ import {
   type ProjectFormValues,
 } from '../types'
 
-const inputCls =
-  'w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30'
-const labelCls = 'w-40 shrink-0 text-sm font-medium text-foreground sm:w-48'
 const helpCls = 'text-xs text-muted-foreground'
 const cardTabBase =
   'flex flex-1 flex-col items-start rounded-md border px-3 py-3 text-left text-sm transition'
@@ -45,6 +48,7 @@ export function ProjectFormPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const isEdit = Boolean(projectId)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const qc = useQueryClient()
 
   const [form, setForm] = useState<ProjectFormValues>(() => defaultProjectFormValues())
@@ -108,6 +112,23 @@ export function ProjectFormPage() {
     newProjectTeamSeeded.current = true
     setForm((f) => ({ ...f, team: initial }))
   }, [isEdit, orgQuery.data, teamQuery.data])
+
+  const clientIdFromQuery = searchParams.get('clientId')?.trim() ?? ''
+  const clientPicked = useRef(false)
+  useEffect(() => {
+    if (isEdit || !clientIdFromQuery || clientPicked.current) {
+      return
+    }
+    const list = clientsQuery.data?.items ?? []
+    if (list.length === 0) {
+      return
+    }
+    if (!list.some((c) => c.id === clientIdFromQuery)) {
+      return
+    }
+    clientPicked.current = true
+    setForm((f) => ({ ...f, clientId: clientIdFromQuery }))
+  }, [isEdit, clientIdFromQuery, clientsQuery.data?.items])
 
   useEffect(() => {
     if (!isEdit) return
@@ -228,14 +249,14 @@ export function ProjectFormPage() {
 
   if (isEdit && projectQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         <p className="text-sm text-muted-foreground">Loading project…</p>
       </div>
     )
   }
   if (isEdit && projectQuery.isError) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         <p className="text-sm text-destructive" role="alert">
           Could not load the project.
         </p>
@@ -247,7 +268,7 @@ export function ProjectFormPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8 px-4 py-8">
+    <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {isEdit ? 'Edit project' : 'New project'}
@@ -260,12 +281,15 @@ export function ProjectFormPage() {
         </p>
       ) : null}
 
-      <section className="space-y-4">
-        <div className="space-y-4">
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-            <span className={labelCls}>Client</span>
-            <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+      <section>
+        <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-[200px_1fr] sm:items-start">
+          <label className={labelCls} htmlFor="proj-client">
+            Client
+          </label>
+          <div className={fieldWrap}>
+            <div className="flex min-w-0 flex-wrap gap-2">
               <select
+                id="proj-client"
                 value={form.clientId}
                 onChange={(e) => set('clientId', e.target.value)}
                 className={cn(inputCls, 'max-w-md flex-1')}
@@ -277,40 +301,51 @@ export function ProjectFormPage() {
                   </option>
                 ))}
               </select>
-              <Button asChild type="button" variant="outline" size="sm" className="h-9">
+              <Button
+                asChild
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9"
+              >
                 <Link to="/clients/new">+ New client</Link>
               </Button>
             </div>
           </div>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start">
-            <span className={labelCls}>Project name</span>
-            <div className="min-w-0 flex-1">
-              <input
-                value={form.name}
-                onChange={(e) => set('name', e.target.value)}
-                className={inputCls}
-                autoComplete="off"
-              />
-            </div>
+
+          <label className={labelCls} htmlFor="proj-name">
+            Project name
+          </label>
+          <div className={fieldWrap}>
+            <input
+              id="proj-name"
+              value={form.name}
+              onChange={(e) => set('name', e.target.value)}
+              className={inputCls}
+              autoComplete="off"
+            />
           </div>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start">
-            <span className={labelCls}>Project code</span>
-            <div className="min-w-0 flex-1">
-              <input
-                value={form.projectCode}
-                onChange={(e) => set('projectCode', e.target.value)}
-                className={inputCls}
-                autoComplete="off"
-              />
-              <p className={cn(helpCls, 'mt-1.5')}>
-                Optional. A code can help identify your project. You can use any
-                combination of numbers or letters.
-              </p>
-            </div>
+
+          <label className={labelCls} htmlFor="proj-code">
+            Project code
+          </label>
+          <div className={fieldWrap}>
+            <input
+              id="proj-code"
+              value={form.projectCode}
+              onChange={(e) => set('projectCode', e.target.value)}
+              className={inputCls}
+              autoComplete="off"
+            />
+            <p className={cn(helpCls, 'mt-1.5')}>
+              Optional. A code can help identify your project. You can use any
+              combination of numbers or letters.
+            </p>
           </div>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start">
-            <span className={labelCls}>Dates</span>
-            <div className="flex min-w-0 flex-1 flex-wrap gap-3">
+
+          <span className={labelCls}>Dates</span>
+          <div className={fieldWrap}>
+            <div className="flex min-w-0 flex-wrap gap-3">
               <label className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="text-xs text-muted-foreground">Starts on</span>
                 <input
@@ -330,27 +365,32 @@ export function ProjectFormPage() {
                 />
               </label>
             </div>
+            <p className={cn(helpCls, 'mt-1.5')}>
+              Optional. You will still be able to track time outside of this
+              range.
+            </p>
           </div>
-          <p className={cn(helpCls, 'sm:ps-[12.5rem]')}>
-            Optional. You will still be able to track time outside of this
-            range.
-          </p>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start">
-            <span className={labelCls}>Notes</span>
+
+          <label className={labelCls} htmlFor="proj-notes">
+            Notes
+          </label>
+          <div className={fieldWrap}>
             <textarea
+              id="proj-notes"
               value={form.notes}
               onChange={(e) => set('notes', e.target.value)}
-              className={cn(inputCls, 'min-h-24 resize-y')}
+              className={cnTextarea(inputCls)}
               rows={4}
             />
+            <p className={cn(helpCls, 'mt-1.5')}>
+              Optional. Notes are great for anything you need to reference
+              later…
+            </p>
           </div>
-          <p className={cn(helpCls, 'sm:ps-[12.5rem]')}>
-            Optional. Notes are great for anything you need to reference
-            later…
-          </p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-            <span className={labelCls}>Permissions</span>
-            <div className="min-w-0 flex-1 space-y-2">
+
+          <span className={labelCls}>Permissions</span>
+          <div className={fieldWrap}>
+            <div className="space-y-2">
               <label className="flex cursor-pointer gap-2 text-sm text-foreground">
                 <input
                   type="radio"
@@ -375,10 +415,10 @@ export function ProjectFormPage() {
         </div>
       </section>
 
+      <hr className="border-border" />
+
       <section className="space-y-3">
-      <h2 className="mb-2 text-sm font-semibold text-foreground">
-        Project type
-        </h2>
+        <h2 className="mb-2 text-sm font-semibold text-foreground">Project type</h2>
         <div className="flex flex-col gap-2 sm:flex-row">
           <button
             type="button"
@@ -549,11 +589,14 @@ export function ProjectFormPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold text-foreground">Invoice values</h2>
-        <div className="space-y-3">
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-            <span className={labelCls}>Invoice due date</span>
+        <h2 className="mb-4 text-sm font-semibold text-foreground">Invoice values</h2>
+        <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-[200px_1fr] sm:items-start">
+          <label className={labelCls} htmlFor="proj-invoice-due">
+            Invoice due date
+          </label>
+          <div className={fieldWrap}>
             <select
+              id="proj-invoice-due"
               value={form.invoice.dueMode}
               onChange={(e) =>
                 set('invoice', {
@@ -570,9 +613,13 @@ export function ProjectFormPage() {
               <option value="net_60">Net 60</option>
             </select>
           </div>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-            <span className={labelCls}>PO Number</span>
+
+          <label className={labelCls} htmlFor="proj-po">
+            PO Number
+          </label>
+          <div className={fieldWrap}>
             <input
+              id="proj-po"
               value={form.invoice.poNumber}
               onChange={(e) =>
                 set('invoice', { ...form.invoice, poNumber: e.target.value })
@@ -580,10 +627,14 @@ export function ProjectFormPage() {
               className={inputCls}
             />
           </div>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-            <span className={labelCls}>Tax</span>
+
+          <label className={labelCls} htmlFor="proj-tax1">
+            Tax
+          </label>
+          <div className={fieldWrap}>
             <div className="flex flex-wrap items-center gap-2">
               <input
+                id="proj-tax1"
                 type="number"
                 min={0}
                 step="0.01"
@@ -612,28 +663,38 @@ export function ProjectFormPage() {
               </button>
             </div>
           </div>
-          {form.invoice.secondTaxEnabled && (
-            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:ps-48">
-              <span className="text-sm text-muted-foreground">Second tax</span>
-              <input
-                type="number"
-                min={0}
-                className={cn(inputCls, 'w-20 tabular-nums')}
-                value={form.invoice.secondTaxPercent}
-                onChange={(e) =>
-                  set('invoice', {
-                    ...form.invoice,
-                    secondTaxPercent: Number(e.target.value) || 0,
-                  })
-                }
-              />
-              <span className="text-sm text-muted-foreground">%</span>
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-            <span className={labelCls}>Discount</span>
+          {form.invoice.secondTaxEnabled ? (
+            <>
+              <label className={labelCls} htmlFor="proj-tax2">
+                Second tax
+              </label>
+              <div className={fieldWrap}>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="proj-tax2"
+                    type="number"
+                    min={0}
+                    className={cn(inputCls, 'w-20 tabular-nums')}
+                    value={form.invoice.secondTaxPercent}
+                    onChange={(e) =>
+                      set('invoice', {
+                        ...form.invoice,
+                        secondTaxPercent: Number(e.target.value) || 0,
+                      })
+                    }
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+              </div>
+            </>
+          ) : null}
+          <label className={labelCls} htmlFor="proj-discount">
+            Discount
+          </label>
+          <div className={fieldWrap}>
             <div className="flex items-center gap-1">
               <input
+                id="proj-discount"
                 type="number"
                 min={0}
                 className={cn(inputCls, 'w-20 tabular-nums')}
@@ -651,7 +712,7 @@ export function ProjectFormPage() {
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-3 pt-2">
+      <div className="mt-8 flex flex-wrap gap-3">
         <Button
           type="button"
           size="lg"

@@ -117,7 +117,6 @@ export const appNavSections: AppNavSection[] = [
         to: '/approvals',
         description: 'Work hour approval and expense approval',
         icon: CheckCircle2,
-        pendingCount: 1,
       },
       {
         id: 'reports',

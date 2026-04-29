@@ -32,7 +32,9 @@ export function TeamInvitePage() {
   const [employmentType, setEmploymentType] = useState<
     'EMPLOYEE' | 'CONTRACTOR'
   >('EMPLOYEE')
-  const [jobLabel, setJobLabel] = useState('')
+  const [selectedRoleNames, setSelectedRoleNames] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [weeklyCapacity, setWeeklyCapacity] = useState(35)
   const [billable, setBillable] = useState('')
   const [cost, setCost] = useState('')
@@ -46,17 +48,11 @@ export function TeamInvitePage() {
 
   const jobRoleSelectOptions = useMemo(() => {
     const items = teamRolesQ.data?.items ?? []
-    const fromOrg = new Set(
-      items
-        .map((r) => r.name.trim())
-        .filter((n) => n.length > 0),
-    )
-    const current = jobLabel.trim()
-    if (current && !fromOrg.has(current)) {
-      fromOrg.add(current)
-    }
-    return [...fromOrg].sort((a, b) => a.localeCompare(b))
-  }, [teamRolesQ.data?.items, jobLabel])
+    return items
+      .map((r) => r.name.trim())
+      .filter((n) => n.length > 0)
+      .sort((a, b) => a.localeCompare(b))
+  }, [teamRolesQ.data?.items])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -69,7 +65,10 @@ export function TeamInvitePage() {
         workEmail: workEmail.trim(),
         employeeId: employeeId.trim() || undefined,
         employmentType,
-        jobLabel: jobLabel.trim() || undefined,
+        jobLabel:
+          jobRoleSelectOptions
+            .filter((n) => selectedRoleNames.has(n))
+            .join(', ') || undefined,
         weeklyCapacity,
         defaultBillableRatePerHour: parseMoney(billable),
         costRatePerHour: parseMoney(cost),
@@ -210,37 +209,43 @@ export function TeamInvitePage() {
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls} htmlFor="inv-roles">
-            Roles
-          </label>
-          <select
-            id="inv-roles"
-            className={cn(selectCls, 'max-w-full sm:max-w-md')}
-            value={jobLabel}
-            onChange={(e) => setJobLabel(e.target.value)}
-            disabled={teamRolesQ.isLoading}
-          >
-            <option value="">— None —</option>
-            {jobRoleSelectOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Optional. Options come from your organization&apos;s role list.{' '}
-            <Link
-              to="/team?tab=roles"
-              className="text-primary underline-offset-2 hover:underline"
-            >
-              Manage roles
-            </Link>
-            {teamRolesQ.isError ? (
-              <span className="ml-1 text-destructive">
-                (Could not load role list.)
-              </span>
-            ) : null}
-          </p>
+          <span className={labelCls}>Roles</span>
+          <div className="mt-1.5 max-w-full space-y-2 rounded-md border border-border bg-muted/10 p-2 sm:max-w-md">
+            {teamRolesQ.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading roles…</p>
+            ) : jobRoleSelectOptions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No custom roles in this organization yet.
+              </p>
+            ) : (
+              jobRoleSelectOptions.map((name) => (
+                <label
+                  key={name}
+                  className="flex cursor-pointer items-center gap-2.5 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    className="size-4 rounded border-border text-primary"
+                    checked={selectedRoleNames.has(name)}
+                    onChange={() => {
+                      setSelectedRoleNames((prev) => {
+                        const n = new Set(prev)
+                        if (n.has(name)) n.delete(name)
+                        else n.add(name)
+                        return n
+                      })
+                    }}
+                  />
+                  <span className="text-foreground">{name}</span>
+                </label>
+              ))
+            )}
+          </div>
+          {teamRolesQ.isError ? (
+            <p className="mt-1 text-xs text-destructive">
+              Could not load role list.
+            </p>
+          ) : null}
         </div>
 
         <div className={fieldWrap}>
@@ -277,7 +282,7 @@ export function TeamInvitePage() {
             <span className="text-sm text-muted-foreground">$</span>
             <input
               id="inv-bill"
-              className={inputCls}
+              className={cn(inputCls, 'max-w-[7rem] shrink-0')}
               inputMode="decimal"
               value={billable}
               onChange={(e) => setBillable(e.target.value)}
@@ -300,7 +305,7 @@ export function TeamInvitePage() {
             <span className="text-sm text-muted-foreground">$</span>
             <input
               id="inv-cost"
-              className={inputCls}
+              className={cn(inputCls, 'max-w-[7rem] shrink-0')}
               inputMode="decimal"
               value={cost}
               onChange={(e) => setCost(e.target.value)}

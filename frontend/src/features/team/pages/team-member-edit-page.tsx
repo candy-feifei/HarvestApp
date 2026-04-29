@@ -683,12 +683,11 @@ export function TeamMemberEditPage() {
 
               {member.invitationStatus === 'INVITED' ? (
                 <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                  <span className="text-muted-foreground">
-                    This person hasn't signed in yet.
-                  </span>{' '}
+                  <p className="text-muted-foreground">This person hasn&apos;t signed in yet.</p>
+                  <p className="mt-1 text-muted-foreground italic">Invitation pending</p>
                   <button
                     type="button"
-                    className="text-primary underline-offset-2 hover:underline"
+                    className="mt-2 text-primary underline-offset-2 hover:underline"
                     onClick={() => resendMut.mutate()}
                     disabled={resendMut.isPending}
                   >
@@ -806,41 +805,59 @@ export function TeamMemberEditPage() {
                 </div>
 
                 <div className={fieldWrap}>
-                  <label className={labelCls} htmlFor="m-roles">
-                    Roles
-                  </label>
-                  <select
-                    id="m-roles"
-                    className={cn(selectCls, 'max-w-full sm:max-w-md')}
-                    value={jobLabel}
-                    onChange={(e) => {
-                      setIsDirty(true)
-                      setJobLabel(e.target.value)
-                    }}
-                    disabled={teamRolesQ.isLoading}
-                  >
-                    <option value="">— None —</option>
-                    {jobRoleSelectOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Options come from your organization&apos;s role list. Roles help
-                    organize the Team section and other reports.{' '}
-                    <Link
-                      to="/team?tab=roles"
-                      className="text-primary underline-offset-2 hover:underline"
-                    >
-                      Manage roles
-                    </Link>
-                    {teamRolesQ.isError ? (
-                      <span className="ml-1 text-destructive">
-                        (Could not load role list.)
-                      </span>
-                    ) : null}
-                  </p>
+                  <span className={labelCls}>Roles</span>
+                  <div className="mt-1.5 max-w-full space-y-2 rounded-md border border-border bg-muted/10 p-2 sm:max-w-md">
+                    {teamRolesQ.isLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading roles…</p>
+                    ) : jobRoleSelectOptions.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No custom roles yet.</p>
+                    ) : (
+                      jobRoleSelectOptions.map((name) => {
+                        const picked = jobLabel
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                          .includes(name)
+                        return (
+                          <label
+                            key={name}
+                            className="flex cursor-pointer items-center gap-2.5 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              className="size-4 rounded border-border text-primary"
+                              checked={picked}
+                              onChange={() => {
+                                setIsDirty(true)
+                                const parts = new Set(
+                                  jobLabel
+                                    .split(',')
+                                    .map((s) => s.trim())
+                                    .filter(Boolean),
+                                )
+                                if (parts.has(name)) {
+                                  parts.delete(name)
+                                } else {
+                                  parts.add(name)
+                                }
+                                setJobLabel(
+                                  jobRoleSelectOptions
+                                    .filter((n) => parts.has(n))
+                                    .join(', '),
+                                )
+                              }}
+                            />
+                            <span className="text-foreground">{name}</span>
+                          </label>
+                        )
+                      })
+                    )}
+                  </div>
+                  {teamRolesQ.isError ? (
+                    <p className="mt-1 text-xs text-destructive">
+                      Could not load role list.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className={fieldWrap}>
@@ -1009,6 +1026,7 @@ export function TeamMemberEditPage() {
               memberId={id}
               isViewingSelf={isViewingSelf}
               canSetOtherPassword={canChangePermissions}
+              workEmail={workEmail}
             />
           ) : (
             <div className="text-sm text-muted-foreground">Coming soon.</div>
@@ -1047,7 +1065,7 @@ function RatesTable({
   function slashYmd(ymd: string) {
     const [y, m, d] = ymd.slice(0, 10).split('-')
     if (!y || !m || !d) return ymd
-    return `${d}/${m}/${y}`
+    return `${m}/${d}/${y}`
   }
 
   if (loading) {

@@ -127,6 +127,17 @@ export function deleteExpense(id: string) {
   return apiRequest<{ id: string }>(`/expenses/${id}`, { method: 'DELETE' })
 }
 
+export function submitExpenseWeek(weekOf: string) {
+  return apiRequest<{
+    submittedCount: number
+    weekFrom: string
+    toExclusive: string
+  }>('/expenses/submit-week', {
+    method: 'POST',
+    body: JSON.stringify({ weekOf }),
+  })
+}
+
 // --- Expense categories ---
 
 export type ExpenseCategoryItem = {

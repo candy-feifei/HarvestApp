@@ -883,10 +883,13 @@ export function TimePage() {
             <table className="w-full min-w-[800px] table-fixed border-collapse text-sm">
               <thead>
                 <tr className="bg-muted/30 text-left text-xs font-medium text-muted-foreground">
-                  <th className="w-[260px] border-b border-r border-border px-2 py-2">Project / task</th>
+                  <th className="w-[260px] border-b border-r border-border px-2 py-2">Project</th>
                   {dayKeys.map((d) => {
                     const wd = new Date(`${d}T12:00:00.000Z`)
-                    const wdl = wd.toLocaleDateString('en-GB', { weekday: 'short' })
+                    const wdl = wd.toLocaleDateString('en-GB', {
+                      weekday: 'short',
+                      timeZone: 'UTC',
+                    })
                     const dLocked = weekLockedByApproval || dayLockedByYmd[d]
                     return (
                       <th
@@ -896,7 +899,9 @@ export function TimePage() {
                         <div className="mb-0.5 flex min-h-4 items-center justify-center">
                           {dLocked ? <Lock className="size-3.5 text-muted-foreground" aria-label="Day locked" /> : null}
                         </div>
-                        <div className="text-foreground tabular-nums">{d.slice(5)}</div>
+                        <div className="text-foreground tabular-nums">
+                          {d.slice(5, 7)}/{d.slice(8, 10)}
+                        </div>
                         <div className="text-xs font-normal text-muted-foreground">{wdl}</div>
                       </th>
                     )
@@ -963,38 +968,38 @@ export function TimePage() {
                           (cellDraft[k] !== undefined ? cellDraft[k] : list.length ? String(sum) : '') ?? ''
                         return (
                           <td key={d} className="border-b border-l border-border p-0 align-top">
-                            <div className="p-0.5">
-                              <div className="flex items-center gap-0.5">
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  className={cn(
-                                    'h-8 w-full min-w-0 rounded border-0 border-transparent bg-transparent text-center text-sm tabular-nums',
-                                    'focus:border-transparent focus:bg-muted/30 focus:ring-0 focus:outline-none',
-                                    cellLocked ? 'cursor-not-allowed opacity-60' : '',
-                                    first?.status === 'APPROVED' && 'text-emerald-800',
-                                  )}
-                                  disabled={cellLocked || weekLockedByApproval || saveCreate.isPending || multi}
-                                  value={val}
-                                  onChange={(ev) => setCellDraft((c) => ({ ...c, [k]: ev.target.value }))}
-                                  onBlur={(ev) => {
-                                    void applyCellBlur(r.projectTaskId, d, ev.target.value.trim())
-                                  }}
-                                  title={
-                                    multi
-                                      ? 'This day has multiple entries; use Day view to change each one.'
-                                      : first?.isLocked
-                                        ? 'This row is approved; edit is blocked'
-                                        : first?.status === 'SUBMITTED'
-                                          ? 'Hours in this week’s timesheet (submit/resubmit is once per week, not per line)'
-                                          : 'Hours in this week’s timesheet'
-                                  }
-                                />
+                            <div className="flex flex-col gap-0.5 p-0.5">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                className={cn(
+                                  'h-8 w-full min-w-0 rounded border-0 border-transparent bg-transparent text-center text-sm tabular-nums',
+                                  'focus:border-transparent focus:bg-muted/30 focus:ring-0 focus:outline-none',
+                                  cellLocked ? 'cursor-not-allowed opacity-60' : '',
+                                  first?.status === 'APPROVED' && 'text-emerald-800',
+                                )}
+                                disabled={cellLocked || weekLockedByApproval || saveCreate.isPending || multi}
+                                value={val}
+                                onChange={(ev) => setCellDraft((c) => ({ ...c, [k]: ev.target.value }))}
+                                onBlur={(ev) => {
+                                  void applyCellBlur(r.projectTaskId, d, ev.target.value.trim())
+                                }}
+                                title={
+                                  multi
+                                    ? 'This day has multiple entries; use Day view to change each one.'
+                                    : first?.isLocked
+                                      ? 'This row is approved; edit is blocked'
+                                      : first?.status === 'SUBMITTED'
+                                        ? 'Hours in this week’s timesheet (submit/resubmit is once per week, not per line)'
+                                        : 'Hours in this week’s timesheet'
+                                }
+                              />
+                              <div className="flex justify-end">
                                 <Button
                                   type="button"
                                   size="icon-sm"
                                   variant="ghost"
-                                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
                                   disabled={weekLockedByApproval || multi}
                                   onClick={() => {
                                     const entry = list.find((x) => (x.hours || 0) > 0) ?? list[0] ?? null
@@ -1009,7 +1014,7 @@ export function TimePage() {
                                   }
                                   aria-label="Note"
                                 >
-                                  <StickyNote className="size-4" aria-hidden />
+                                  <StickyNote className="size-3.5" aria-hidden />
                                 </Button>
                               </div>
                             </div>
