@@ -34,7 +34,6 @@ import {
   updateTimeEntry,
   withdrawTimeWeek,
   copyFromRecentDay,
-  copyFromRecentWeek,
   type AssignableRow,
   type TimeEntryListItem,
 } from '@/features/time/api'
@@ -319,16 +318,6 @@ export function TimePage() {
       setCopyRecentFeedback(e instanceof ApiError ? e.message : 'Copy failed.')
     },
   })
-  const doCopyFromRecentWeek = useMutation({
-    mutationFn: (weekOf: string) => copyFromRecentWeek(weekOf),
-    onSuccess: (res) => {
-      invalidate()
-      setCopyRecentFeedback(res.message ? res.message : null)
-    },
-    onError: (e) => {
-      setCopyRecentFeedback(e instanceof ApiError ? e.message : 'Copy failed.')
-    },
-  })
 
   const stopRunningTimer = useCallback(async () => {
     const t = activeTimerRef.current
@@ -504,31 +493,23 @@ export function TimePage() {
 
   const runCopyFromRecent = useCallback(() => {
     setCopyRecentFeedback(null)
-    if (view === 'week') {
-      void doCopyFromRecentWeek.mutateAsync(getWeekOfForApi())
-    } else if (view === 'day') {
+    if (view === 'day' || view === 'week') {
       void doCopyFromRecent.mutateAsync(copyTargetYmd)
     }
-  }, [view, doCopyFromRecent, doCopyFromRecentWeek, getWeekOfForApi, copyTargetYmd])
+  }, [view, doCopyFromRecent, copyTargetYmd])
 
   const copyFromRecentProps = useMemo(
     () => ({
       onClick: runCopyFromRecent,
       disabled: !list || listLoading,
-      loading: doCopyFromRecent.isPending || doCopyFromRecentWeek.isPending,
+      loading: doCopyFromRecent.isPending,
       feedback: copyRecentFeedback,
-      label: view === 'day' ? 'Copy from most recent day' : 'Copy from previous week in month',
+      label: 'Copy from most recent day',
     }),
-    [
-      runCopyFromRecent,
-      list,
-      listLoading,
-      doCopyFromRecent.isPending,
-      doCopyFromRecentWeek.isPending,
-      copyRecentFeedback,
-      view,
-    ],
+    [runCopyFromRecent, list, listLoading, doCopyFromRecent.isPending, copyRecentFeedback],
   )
+
+  const showWeekCopyFromRecentDay = view === 'week' && !weekLockedByApproval && listWeekTotal <= 0
 
   const removeWeekRow = useCallback(
     async (projectTaskId: string) => {
@@ -714,20 +695,6 @@ export function TimePage() {
               >
                 Calendar
               </button>
-            </div>
-            <div className="min-w-0">
-              <label className="sr-only" htmlFor="teammates-tz">
-                Teammates
-              </label>
-              <select
-                id="teammates-tz"
-                disabled
-                className="h-9 w-[min(8rem,100%)] min-w-0 max-w-full cursor-not-allowed rounded-md border border-border bg-white px-2 text-sm text-muted-foreground shadow-sm"
-                title="Available when team list is wired"
-                defaultValue="self"
-              >
-                <option value="self">Teammates</option>
-              </select>
             </div>
           </div>
         </div>
@@ -1071,7 +1038,7 @@ export function TimePage() {
               >
                 + Add row
               </Button>
-              {!weekLockedByApproval && (
+              {showWeekCopyFromRecentDay ? (
                 <>
                   <Button
                     type="button"
@@ -1089,7 +1056,7 @@ export function TimePage() {
                     </p>
                   ) : null}
                 </>
-              )}
+              ) : null}
             </div>
             <div className="ml-auto flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end sm:w-auto">
               {showSubmitWeekForApproval && approvalConfirm !== 'submit' && (
