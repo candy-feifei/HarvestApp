@@ -7,6 +7,9 @@ import { teamMemberLabel, teamRowToFormMember, type ProjectFormTeamMember } from
 const inputCls =
   'w-full min-w-0 rounded-md border border-border bg-white px-2 py-1.5 text-sm text-foreground shadow-sm tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30'
 
+const selectAllNoneBtnCls =
+  'm-0 inline cursor-pointer appearance-none border-0 border-transparent bg-transparent p-0 align-baseline font-inherit !text-primary shadow-none ring-0 [text-decoration:none] hover:opacity-90'
+
 type TeamSectionProps = {
   members: ProjectFormTeamMember[]
   onChange: (next: ProjectFormTeamMember[]) => void
@@ -102,13 +105,14 @@ export function TeamSection({
         <div />
         <div>Team</div>
         {showRateColumn ? <div className="text-right">Billable rate</div> : null}
-        <div className="text-right">
+        <div className="text-center">
           <span>Manages this project</span>
           <div className="text-[11px] font-normal">
+            Select&nbsp;
             <button
               type="button"
               onClick={() => setAllManager(true)}
-              className="text-primary hover:underline"
+              className={selectAllNoneBtnCls}
             >
               All
             </button>
@@ -116,7 +120,7 @@ export function TeamSection({
             <button
               type="button"
               onClick={() => setAllManager(false)}
-              className="text-primary hover:underline"
+              className={selectAllNoneBtnCls}
             >
               None
             </button>
@@ -177,7 +181,7 @@ export function TeamSection({
                 />
               </div>
             ) : null}
-            <div className="flex justify-end">
+            <div className="flex justify-center">
               <input
                 type="checkbox"
                 className="size-4 rounded border-border text-primary"

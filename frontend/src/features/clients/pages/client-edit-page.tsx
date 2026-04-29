@@ -12,8 +12,6 @@ import {
   labelCls,
   selectCls,
   cnTextarea,
-  NET_PRESETS,
-  NET_CUSTOM_PLACEHOLDER_DAYS,
 } from '@/features/clients/client-form-helpers'
 import {
   archiveClient,

@@ -19,6 +19,7 @@ import {
   formatDecimalHoursAsClock,
   formatElapsedMs,
   formatLongDateEn,
+  parseClockToDecimal,
   todayUtcYmd,
 } from '@/features/time/time-format'
 import {
@@ -34,7 +35,6 @@ import {
   updateTimeEntry,
   withdrawTimeWeek,
   copyFromRecentDay,
-  copyFromRecentWeek,
   type AssignableRow,
   type TimeEntryListItem,
 } from '@/features/time/api'
@@ -66,6 +66,10 @@ function buildEntriesByCell(items: TimeEntryListItem[]): Map<string, TimeEntryLi
 
 function cellHoursSum(entries: TimeEntryListItem[] | undefined): number {
   return (entries ?? []).reduce((a, e) => a + (e.hours || 0), 0)
+}
+
+function parseCellHours(raw: string): number {
+  return parseClockToDecimal(String(raw))
 }
 
 type ActiveTimerState = {
@@ -101,6 +105,8 @@ export function TimePage() {
   const [weekListAnchorYmd, setWeekListAnchorYmd] = useState(w0)
   const [cellDraft, setCellDraft] = useState<Record<string, string>>({})
   const [trackOpen, setTrackOpen] = useState(false)
+  /** Calendar “+ Add time” (new entry): manual duration only, no timer / countdown. */
+  const [trackModalCalendarAdd, setTrackModalCalendarAdd] = useState(false)
   const [editing, setEditing] = useState<TimeEntryListItem | null>(null)
   const [activeTimer, setActiveTimer] = useState<ActiveTimerState | null>(null)
   const [timerTick, setTimerTick] = useState(0)
@@ -319,16 +325,6 @@ export function TimePage() {
       setCopyRecentFeedback(e instanceof ApiError ? e.message : 'Copy failed.')
     },
   })
-  const doCopyFromRecentWeek = useMutation({
-    mutationFn: (weekOf: string) => copyFromRecentWeek(weekOf),
-    onSuccess: (res) => {
-      invalidate()
-      setCopyRecentFeedback(res.message ? res.message : null)
-    },
-    onError: (e) => {
-      setCopyRecentFeedback(e instanceof ApiError ? e.message : 'Copy failed.')
-    },
-  })
 
   const stopRunningTimer = useCallback(async () => {
     const t = activeTimerRef.current
@@ -343,6 +339,12 @@ export function TimePage() {
       activeTimerRef.current = null
     }
   }, [invalidate])
+
+  const closeTrackModal = useCallback(() => {
+    setTrackOpen(false)
+    setEditing(null)
+    setTrackModalCalendarAdd(false)
+  }, [])
 
   const handleStartTimerFromModal = useCallback(
     async (payload: {
@@ -374,9 +376,9 @@ export function TimePage() {
       }
       setActiveTimer(next)
       activeTimerRef.current = next
-      setTrackOpen(false)
+      closeTrackModal()
     },
-    [stopRunningTimer, weekLockedByApproval],
+    [stopRunningTimer, weekLockedByApproval, closeTrackModal],
   )
 
   const handleStopTimer = useCallback(() => {
@@ -390,40 +392,50 @@ export function TimePage() {
       }
       const k = cellKey(projectTaskId, date)
       const listForCell = entriesByCell.get(k) ?? []
-      const currentSum = cellHoursSum(listForCell)
-      const h = parseFloat(String(raw).replace(/,/g, ''))
-      const hours = Number.isNaN(h) || h < 0 ? 0 : Math.min(24, h)
+      const hours = parseClockToDecimal(raw)
+      const clearCellDraft = () => {
+        setCellDraft((c) => {
+          if (!(k in c)) {
+            return c
+          }
+          const n = { ...c }
+          delete n[k]
+          return n
+        })
+      }
       if (listForCell.some((e) => e.isLocked)) {
-        if (raw !== String(currentSum) && cellDraft[k] !== undefined) {
-          setCellDraft((c) => ({ ...c, [k]: String(currentSum) }))
-        }
+        clearCellDraft()
         return
       }
       if (listForCell.length > 1) {
-        if (Math.abs(hours - currentSum) < 0.0001) return
-        setCellDraft((c) => ({ ...c, [k]: String(currentSum) }))
+        clearCellDraft()
         return
       }
       if (listForCell.length === 1) {
         const prev = listForCell[0]!
         if (hours === 0) {
           await doDelete.mutateAsync(prev.id)
-          setCellDraft((c) => {
-            const n = { ...c }
-            delete n[k]
-            return n
-          })
+          clearCellDraft()
           return
         }
-        if (Math.abs(hours - (prev.hours || 0)) < 0.0001) return
+        if (Math.abs(hours - (prev.hours || 0)) < 0.0001) {
+          clearCellDraft()
+          return
+        }
         await saveUpdate.mutateAsync({ id: prev.id, body: { hours } })
+        clearCellDraft()
+        return
+      }
+      if (listForCell.length === 0 && hours === 0) {
+        clearCellDraft()
         return
       }
       if (hours > 0) {
         await saveCreate.mutateAsync({ projectTaskId, date, hours })
+        clearCellDraft()
       }
     },
-    [entriesByCell, cellDraft, doDelete, saveCreate, saveUpdate, weekLockedByApproval],
+    [entriesByCell, doDelete, saveCreate, saveUpdate, weekLockedByApproval],
   )
 
   const onNavSingleDay = (d: 1 | -1) => {
@@ -446,8 +458,7 @@ export function TimePage() {
     notes?: string
   }) => {
     if (weekLockedByApproval) {
-      setTrackOpen(false)
-      setEditing(null)
+      closeTrackModal()
       return
     }
     await stopRunningTimer()
@@ -466,8 +477,7 @@ export function TimePage() {
       }
       await saveCreate.mutateAsync(payload)
     }
-    setTrackOpen(false)
-    setEditing(null)
+    closeTrackModal()
   }
 
   const onTrackDelete = useCallback(async () => {
@@ -475,14 +485,12 @@ export function TimePage() {
       return
     }
     if (weekLockedByApproval) {
-      setTrackOpen(false)
-      setEditing(null)
+      closeTrackModal()
       return
     }
     await doDelete.mutateAsync(editing.id)
-    setTrackOpen(false)
-    setEditing(null)
-  }, [editing, doDelete, weekLockedByApproval])
+    closeTrackModal()
+  }, [editing, doDelete, weekLockedByApproval, closeTrackModal])
 
   const getWeekOfForApi = useCallback((): string => {
     if (list?.range?.from) {
@@ -504,31 +512,23 @@ export function TimePage() {
 
   const runCopyFromRecent = useCallback(() => {
     setCopyRecentFeedback(null)
-    if (view === 'week') {
-      void doCopyFromRecentWeek.mutateAsync(getWeekOfForApi())
-    } else if (view === 'day') {
+    if (view === 'day' || view === 'week') {
       void doCopyFromRecent.mutateAsync(copyTargetYmd)
     }
-  }, [view, doCopyFromRecent, doCopyFromRecentWeek, getWeekOfForApi, copyTargetYmd])
+  }, [view, doCopyFromRecent, copyTargetYmd])
 
   const copyFromRecentProps = useMemo(
     () => ({
       onClick: runCopyFromRecent,
       disabled: !list || listLoading,
-      loading: doCopyFromRecent.isPending || doCopyFromRecentWeek.isPending,
+      loading: doCopyFromRecent.isPending,
       feedback: copyRecentFeedback,
-      label: view === 'day' ? 'Copy from most recent day' : 'Copy from previous week in month',
+      label: 'Copy from most recent day',
     }),
-    [
-      runCopyFromRecent,
-      list,
-      listLoading,
-      doCopyFromRecent.isPending,
-      doCopyFromRecentWeek.isPending,
-      copyRecentFeedback,
-      view,
-    ],
+    [runCopyFromRecent, list, listLoading, doCopyFromRecent.isPending, copyRecentFeedback],
   )
+
+  const showWeekCopyFromRecentDay = view === 'week' && !weekLockedByApproval && listWeekTotal <= 0
 
   const removeWeekRow = useCallback(
     async (projectTaskId: string) => {
@@ -642,10 +642,9 @@ export function TimePage() {
 
   useEffect(() => {
     if (weekLockedByApproval) {
-      setTrackOpen(false)
-      setEditing(null)
+      closeTrackModal()
     }
-  }, [weekLockedByApproval])
+  }, [weekLockedByApproval, closeTrackModal])
 
   const submitWeekButtonLabel = hasWeekApprovalPending
     ? 'Resubmit week for approval'
@@ -669,7 +668,7 @@ export function TimePage() {
   }, [weekLockedByApproval, activeTimer, daySelectedYmd, timerElapsedLabel])
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="mx-auto max-w-7xl space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Timesheet</h1>
@@ -715,20 +714,6 @@ export function TimePage() {
                 Calendar
               </button>
             </div>
-            <div className="min-w-0">
-              <label className="sr-only" htmlFor="teammates-tz">
-                Teammates
-              </label>
-              <select
-                id="teammates-tz"
-                disabled
-                className="h-9 w-[min(8rem,100%)] min-w-0 max-w-full cursor-not-allowed rounded-md border border-border bg-white px-2 text-sm text-muted-foreground shadow-sm"
-                title="Available when team list is wired"
-                defaultValue="self"
-              >
-                <option value="self">Teammates</option>
-              </select>
-            </div>
           </div>
         </div>
       </div>
@@ -760,6 +745,7 @@ export function TimePage() {
             if (weekLockedByApproval) {
               return
             }
+            setTrackModalCalendarAdd(false)
             setEditing(null)
             setTrackOpen(true)
           }}
@@ -792,6 +778,7 @@ export function TimePage() {
             if (weekLockedByApproval || e.isLocked) {
               return
             }
+            setTrackModalCalendarAdd(false)
             setEditing(e)
             setTrackOpen(true)
           }}
@@ -880,7 +867,7 @@ export function TimePage() {
       {view === 'week' && list && dayKeys.length > 0 && (
         <div className="space-y-3">
           <div className="overflow-x-auto rounded-md border border-border bg-white shadow-sm">
-            <table className="w-full min-w-[800px] table-fixed border-collapse text-sm">
+            <table className="w-full min-w-[920px] table-fixed border-collapse text-sm">
               <thead>
                 <tr className="bg-muted/30 text-left text-xs font-medium text-muted-foreground">
                   <th className="w-[260px] border-b border-r border-border px-2 py-2">Project</th>
@@ -894,7 +881,7 @@ export function TimePage() {
                     return (
                       <th
                         key={d}
-                        className="w-[80px] border-b border-l border-border px-1 py-2 text-center font-medium"
+                        className="w-[100px] min-w-[5.5rem] border-b border-l border-border px-1 py-2 text-center font-medium"
                       >
                         <div className="mb-0.5 flex min-h-4 items-center justify-center">
                           {dLocked ? <Lock className="size-3.5 text-muted-foreground" aria-label="Day locked" /> : null}
@@ -965,18 +952,53 @@ export function TimePage() {
                         const multi = list.length > 1
                         const cellLocked = list.some((x) => x.isLocked)
                         const val =
-                          (cellDraft[k] !== undefined ? cellDraft[k] : list.length ? String(sum) : '') ?? ''
+                          (cellDraft[k] !== undefined
+                            ? cellDraft[k]
+                            : list.length
+                              ? formatDecimalHoursAsClock(sum)
+                              : '') ?? ''
+                        const showNoteButton =
+                          (cellDraft[k] !== undefined ? parseCellHours(String(cellDraft[k]!)) : sum) > 0
                         return (
-                          <td key={d} className="border-b border-l border-border p-0 align-top">
-                            <div className="flex flex-col gap-0.5 p-0.5">
+                          <td key={d} className="border-b border-l border-border p-0 align-middle">
+                            <div className="flex min-w-0 items-center gap-0.5 p-0.5">
+                              {showNoteButton ? (
+                                <Button
+                                  type="button"
+                                  size="icon-sm"
+                                  variant="outline"
+                                  className="h-8 w-8 shrink-0 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                                  disabled={weekLockedByApproval || multi}
+                                  onClick={() => {
+                                    const entry = list.find((x) => (x.hours || 0) > 0) ?? list[0] ?? null
+                                    setWeekCellNoteTarget({ ymd: d, entry })
+                                  }}
+                                  title={
+                                    multi
+                                      ? 'This day has multiple entries; use Day view to change each one.'
+                                      : first?.isLocked
+                                        ? 'This row is approved; edit is blocked'
+                                        : 'Note'
+                                  }
+                                  aria-label="Note"
+                                >
+                                  <StickyNote className="size-3.5" aria-hidden />
+                                </Button>
+                              ) : null}
                               <input
                                 type="text"
                                 inputMode="decimal"
                                 className={cn(
-                                  'h-8 w-full min-w-0 rounded border-0 border-transparent bg-transparent text-center text-sm tabular-nums',
-                                  'focus:border-transparent focus:bg-muted/30 focus:ring-0 focus:outline-none',
-                                  cellLocked ? 'cursor-not-allowed opacity-60' : '',
-                                  first?.status === 'APPROVED' && 'text-emerald-800',
+                                  'h-8 min-w-0 flex-1 rounded-md border-2 border-border bg-white px-1 py-0.5 text-center text-sm font-semibold tabular-nums text-foreground shadow-sm',
+                                  'placeholder:text-muted-foreground/50',
+                                  'hover:border-foreground/30',
+                                  'focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none',
+                                  cellLocked
+                                    ? 'cursor-not-allowed border-muted-foreground/25 bg-muted/30 text-muted-foreground'
+                                    : 'bg-white',
+                                  first?.status === 'APPROVED' &&
+                                    'border-emerald-300/80 bg-emerald-50/80 text-emerald-900',
+                                  multi && 'border-amber-200/80 bg-amber-50/30',
                                 )}
                                 disabled={cellLocked || weekLockedByApproval || saveCreate.isPending || multi}
                                 value={val}
@@ -994,29 +1016,6 @@ export function TimePage() {
                                         : 'Hours in this week’s timesheet'
                                 }
                               />
-                              <div className="flex justify-end">
-                                <Button
-                                  type="button"
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                                  disabled={weekLockedByApproval || multi}
-                                  onClick={() => {
-                                    const entry = list.find((x) => (x.hours || 0) > 0) ?? list[0] ?? null
-                                    setWeekCellNoteTarget({ ymd: d, entry })
-                                  }}
-                                  title={
-                                    multi
-                                      ? 'This day has multiple entries; use Day view to change each one.'
-                                      : first?.isLocked
-                                        ? 'This row is approved; edit is blocked'
-                                        : 'Note'
-                                  }
-                                  aria-label="Note"
-                                >
-                                  <StickyNote className="size-3.5" aria-hidden />
-                                </Button>
-                              </div>
                             </div>
                           </td>
                         )
@@ -1071,7 +1070,7 @@ export function TimePage() {
               >
                 + Add row
               </Button>
-              {!weekLockedByApproval && (
+              {showWeekCopyFromRecentDay ? (
                 <>
                   <Button
                     type="button"
@@ -1089,7 +1088,7 @@ export function TimePage() {
                     </p>
                   ) : null}
                 </>
-              )}
+              ) : null}
             </div>
             <div className="ml-auto flex w-full min-w-0 max-w-5xl flex-col items-end gap-2 self-end sm:w-auto">
               {showSubmitWeekForApproval && approvalConfirm !== 'submit' && (
@@ -1146,6 +1145,7 @@ export function TimePage() {
               if (weekLockedByApproval) {
                 return
               }
+              setTrackModalCalendarAdd(true)
               setDaySelectedYmd(d)
               setEditing(null)
               setTrackOpen(true)
@@ -1154,6 +1154,7 @@ export function TimePage() {
               if (weekLockedByApproval || e.isLocked) {
                 return
               }
+              setTrackModalCalendarAdd(false)
               setEditing(e)
               setTrackOpen(true)
             }}
@@ -1200,10 +1201,7 @@ export function TimePage() {
 
       <TrackTimeModal
         open={trackOpen}
-        onClose={() => {
-          setTrackOpen(false)
-          setEditing(null)
-        }}
+        onClose={closeTrackModal}
         dateLabel={modalDateLabel(modalYmd)}
         ymd={modalYmd}
         projects={trackTimeOptions?.projects ?? []}
@@ -1211,9 +1209,10 @@ export function TimePage() {
         editing={editing}
         isSubmitting={saveCreate.isPending || saveUpdate.isPending}
         onSave={onTrackSave}
-        onStartTimer={handleStartTimerFromModal}
+        onStartTimer={trackModalCalendarAdd ? undefined : handleStartTimerFromModal}
         onDelete={editing && !editing.isLocked ? onTrackDelete : undefined}
         isDeleting={doDelete.isPending}
+        calendarAddMode={trackModalCalendarAdd}
       />
 
       <WeekCellNoteDialog

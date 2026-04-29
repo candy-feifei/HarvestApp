@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -6,7 +6,7 @@ import {
   formatDecimalHoursAsClock,
   parseClockToDecimal,
 } from '@/features/time/time-format'
-import type { TimeEntryListItem, TrackTimeProjectOption } from '@/features/time/api'
+import type { TimeEntryListItem, TrackTimeProjectOption, TrackTimeTaskOption } from '@/features/time/api'
 
 const primaryBtn =
   'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary/30'
@@ -38,6 +38,10 @@ type TrackTimeModalProps = {
   /** 仅编辑已解锁条目时可用 */
   onDelete?: () => Promise<void>
   isDeleting?: boolean
+  /**
+   * New entry from calendar: enter duration and save only — no “Start timer” / live countdown.
+   */
+  calendarAddMode?: boolean
 }
 
 const selectClassName = cn(
@@ -58,23 +62,40 @@ export function TrackTimeModal({
   onStartTimer,
   onDelete,
   isDeleting = false,
+  calendarAddMode = false,
 }: TrackTimeModalProps) {
+  const isCalendarNew = Boolean(calendarAddMode && !editing)
+  const [projectId, setProjectId] = useState('')
   const [projectTaskId, setProjectTaskId] = useState('')
   const [timeStr, setTimeStr] = useState('0:00')
   const [notes, setNotes] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  const projectTaskLine = useMemo(() => {
-    for (const p of projects) {
-      const t = p.tasks.find((x) => x.projectTaskId === projectTaskId)
-      if (t) {
-        return { project: p, task: t }
-      }
+  const sortedProjects = useMemo(
+    () =>
+      [...projects].sort(
+        (a, b) => a.clientName.localeCompare(b.clientName, 'en') || a.name.localeCompare(b.name, 'en'),
+      ),
+    [projects],
+  )
+
+  const taskOptions: TrackTimeTaskOption[] = useMemo(() => {
+    const p = projects.find((x) => x.projectId === projectId)
+    if (!p) {
+      return []
     }
-    return null
-  }, [projects, projectTaskId])
-  const selectedProject = projectTaskLine?.project ?? null
-  const selectedTask = projectTaskLine?.task ?? null
+    return [...p.tasks].sort((a, b) => a.taskName.localeCompare(b.taskName, 'en'))
+  }, [projects, projectId])
+
+  const noTasksInProject = Boolean(projectId) && taskOptions.length === 0
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.projectId === projectId) ?? null,
+    [projects, projectId],
+  )
+  const selectedTask = useMemo(
+    () => taskOptions.find((t) => t.projectTaskId === projectTaskId) ?? null,
+    [taskOptions, projectTaskId],
+  )
 
   const hoursDecimal = useMemo(() => parseClockToDecimal(timeStr), [timeStr])
   const hasManualHours = hoursDecimal > 0.0001
@@ -85,45 +106,70 @@ export function TrackTimeModal({
     }
     setShowDeleteConfirm(false)
     if (editing) {
+      for (const p of projects) {
+        const t = p.tasks.find((x) => x.projectTaskId === editing.projectTaskId)
+        if (t) {
+          setProjectId(p.projectId)
+          setProjectTaskId(t.projectTaskId)
+          setTimeStr(formatDecimalHoursAsClock(editing.hours))
+          setNotes(editing.notes ?? '')
+          return
+        }
+      }
+      setProjectId('')
       setProjectTaskId(editing.projectTaskId)
       setTimeStr(formatDecimalHoursAsClock(editing.hours))
       setNotes(editing.notes ?? '')
     } else {
-      setTimeStr('0:00')
+      setTimeStr(calendarAddMode ? '' : '0:00')
       setNotes('')
     }
-  }, [open, editing])
+  }, [open, editing, projects, calendarAddMode])
 
   useEffect(() => {
     if (!open || editing) {
       return
     }
     if (projects.length === 0) {
+      setProjectId('')
+      setProjectTaskId('')
+      return
+    }
+    setProjectId((pid) => (pid && projects.some((p) => p.projectId === pid) ? pid : projects[0]!.projectId))
+  }, [open, editing, projects])
+
+  useEffect(() => {
+    if (!open || editing) {
+      return
+    }
+    if (!projectId) {
+      setProjectTaskId('')
+      return
+    }
+    const p = projects.find((x) => x.projectId === projectId)
+    if (!p || p.tasks.length === 0) {
       setProjectTaskId('')
       return
     }
     setProjectTaskId((cur) => {
-      for (const p of projects) {
-        if (p.tasks.some((t) => t.projectTaskId === cur)) {
-          return cur
-        }
+      if (cur && p.tasks.some((t) => t.projectTaskId === cur)) {
+        return cur
       }
-      return projects[0]?.tasks[0]?.projectTaskId ?? ''
+      return p.tasks[0]!.projectTaskId
     })
-  }, [open, editing, projects])
+  }, [open, editing, projectId, projects])
 
-  const projectTaskOptions = useMemo(() => {
-    const out: { value: string; label: string }[] = []
-    for (const p of projects) {
-      for (const t of p.tasks) {
-        out.push({
-          value: t.projectTaskId,
-          label: `${p.clientName} — ${p.name} — ${t.taskName}`,
-        })
+  const onProjectChange = useCallback(
+    (nextId: string) => {
+      if (editing) {
+        return
       }
-    }
-    return out
-  }, [projects])
+      setProjectId(nextId)
+      const p = projects.find((x) => x.projectId === nextId)
+      setProjectTaskId(p?.tasks[0]?.projectTaskId ?? '')
+    },
+    [editing, projects],
+  )
 
   if (!open) {
     return null
@@ -134,10 +180,15 @@ export function TrackTimeModal({
     if (!projectTaskId) {
       return
     }
-    if (!editing && h <= 0) {
+    if (isCalendarNew) {
+      if (h <= 0) {
+        return
+      }
+    } else if (!editing && h <= 0) {
       return
     }
     await onSave({ projectTaskId, date: ymd, hours: h, notes: notes.trim() || undefined })
+    setTimeStr(formatDecimalHoursAsClock(h))
   }
 
   const handleStartTimer = () => {
@@ -155,10 +206,12 @@ export function TrackTimeModal({
   }
 
   const disabledInputs = optionsLoading || projects.length === 0
+  const projectDisabled = Boolean(editing) || disabledInputs
+  const taskDisabled = Boolean(editing) || disabledInputs || !projectId || taskOptions.length === 0
   const canPickTask = Boolean(projectTaskId && selectedTask) && !disabledInputs
   const canSaveNewWithHours = !editing && hasManualHours && canPickTask
   const canUpdate = Boolean(editing) && canPickTask
-  const canShowDelete = Boolean(editing) && onDelete && !editing.isLocked
+  const canShowDelete = Boolean(editing && onDelete && !editing.isLocked)
   const busy = isSubmitting || isDeleting
 
   const handleConfirmDelete = async () => {
@@ -189,25 +242,51 @@ export function TrackTimeModal({
           <div>
             <label
               className="mb-1.5 block text-sm font-medium text-foreground"
-              htmlFor="track-project-task"
+              htmlFor="track-project"
             >
-              Project / task
+              Project
             </label>
             <select
-              id="track-project-task"
+              id="track-project"
               className={selectClassName}
-              value={projectTaskId}
-              onChange={(e) => setProjectTaskId(e.target.value)}
-              disabled={Boolean(editing) || disabledInputs}
+              value={projectId}
+              onChange={(e) => onProjectChange(e.target.value)}
+              disabled={projectDisabled}
             >
               {optionsLoading ? (
                 <option value="">Loading…</option>
-              ) : projectTaskOptions.length === 0 ? (
-                <option value="">— No project tasks —</option>
+              ) : sortedProjects.length === 0 ? (
+                <option value="">— No projects —</option>
               ) : (
-                projectTaskOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
+                sortedProjects.map((p) => (
+                  <option key={p.projectId} value={p.projectId}>
+                    {p.clientName} — {p.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="track-task">
+              Task
+            </label>
+            <select
+              id="track-task"
+              className={selectClassName}
+              value={noTasksInProject || !projectId ? '' : projectTaskId}
+              onChange={(e) => setProjectTaskId(e.target.value)}
+              disabled={taskDisabled}
+            >
+              {optionsLoading ? (
+                <option value="">Loading…</option>
+              ) : !projectId ? (
+                <option value="">Select a project first</option>
+              ) : noTasksInProject ? (
+                <option value="">— No tasks in this project —</option>
+              ) : (
+                taskOptions.map((t) => (
+                  <option key={t.projectTaskId} value={t.projectTaskId}>
+                    {t.taskName}
                   </option>
                 ))
               )}
@@ -236,9 +315,15 @@ export function TrackTimeModal({
               </label>
               <input
                 id="time"
-                className="w-full rounded-md border-2 border-border bg-white py-2 text-center text-3xl font-medium tabular-nums tracking-tight text-foreground shadow-sm sm:max-w-[7rem]"
+                className="w-full rounded-md border-2 border-border bg-white py-2 text-center text-3xl font-medium tabular-nums tracking-tight text-foreground shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none sm:max-w-[7rem]"
                 value={timeStr}
                 onChange={(e) => setTimeStr(e.target.value)}
+                onBlur={() => {
+                  if (isCalendarNew && timeStr.trim() === '') {
+                    return
+                  }
+                  setTimeStr((s) => formatDecimalHoursAsClock(parseClockToDecimal(s)))
+                }}
                 inputMode="text"
                 autoComplete="off"
                 placeholder="0:00"
@@ -297,6 +382,15 @@ export function TrackTimeModal({
                   disabled={busy || !canUpdate}
                 >
                   Update entry
+                </Button>
+              ) : isCalendarNew ? (
+                <Button
+                  type="button"
+                  className={primaryBtn}
+                  onClick={handleSave}
+                  disabled={busy || !canPickTask || !hasManualHours}
+                >
+                  Save entry
                 </Button>
               ) : canSaveNewWithHours ? (
                 <Button
