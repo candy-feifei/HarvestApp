@@ -119,20 +119,50 @@ function ymdToUtcDayStart(ymd: string): Date {
   return utcDayStart(ymd);
 }
 
-function serializeRate(r: {
-  id: string;
-  billableRate: Prisma.Decimal;
-  costRate: Prisma.Decimal;
-  startDate: Date;
-  endDate: Date | null;
-}) {
+/** 在时刻 atMs（通常为 Date.now()）该段是否生效 */
+function rateHistoryAppliesAt(
+  r: { startDate: Date; endDate: Date | null },
+  atMs: number,
+): boolean {
+  if (r.startDate.getTime() > atMs) {
+    return false;
+  }
+  if (r.endDate == null) {
+    return true;
+  }
+  return atMs <= r.endDate.getTime();
+}
+
+/** 与 today 重叠的最多一条（无重叠数据时唯一；有重叠取 start 最晚的） */
+function findCurrentRateHistoryId(
+  rows: { id: string; startDate: Date; endDate: Date | null }[],
+  atMs: number,
+): string | null {
+  const active = rows.filter((r) => rateHistoryAppliesAt(r, atMs));
+  if (active.length === 0) {
+    return null;
+  }
+  active.sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
+  return active[0]!.id;
+}
+
+function serializeRate(
+  r: {
+    id: string;
+    billableRate: Prisma.Decimal;
+    costRate: Prisma.Decimal;
+    startDate: Date;
+    endDate: Date | null;
+  },
+  isCurrent: boolean,
+) {
   return {
     id: r.id,
     billableRatePerHour: Number(r.billableRate),
     costRatePerHour: Number(r.costRate),
     startDate: r.startDate.toISOString(),
     endDate: r.endDate ? r.endDate.toISOString() : null,
-    isCurrent: r.endDate == null,
+    isCurrent,
   };
 }
 
@@ -805,7 +835,9 @@ export class OrganizationService {
       where: { userOrganizationId: memberId },
       orderBy: [{ startDate: 'desc' }, { id: 'desc' }],
     });
-    return { items: rows.map(serializeRate) };
+    const atMs = Date.now();
+    const currentId = findCurrentRateHistoryId(rows, atMs);
+    return { items: rows.map((r) => serializeRate(r, r.id === currentId)) };
   }
 
   async createMemberRate(
@@ -872,7 +904,13 @@ export class OrganizationService {
       });
     });
 
-    return { item: serializeRate(result) };
+    const all = await this.prisma.rateHistory.findMany({
+      where: { userOrganizationId: memberId },
+      orderBy: [{ startDate: 'desc' }, { id: 'desc' }],
+    });
+    const atMs = Date.now();
+    const currentId = findCurrentRateHistoryId(all, atMs);
+    return { item: serializeRate(result, result.id === currentId) };
   }
 
   async updateMemberRate(
@@ -956,7 +994,13 @@ export class OrganizationService {
       });
     });
 
-    return { item: serializeRate(updated) };
+    const all = await this.prisma.rateHistory.findMany({
+      where: { userOrganizationId: memberId },
+      orderBy: [{ startDate: 'desc' }, { id: 'desc' }],
+    });
+    const atMs = Date.now();
+    const currentId = findCurrentRateHistoryId(all, atMs);
+    return { item: serializeRate(updated, updated.id === currentId) };
   }
 
   async deleteMemberRate(

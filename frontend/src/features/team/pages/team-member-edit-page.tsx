@@ -1083,20 +1083,27 @@ function RatesTable({
     return acc
   }, null)
 
+  /** 与后端一致：endDate 多为「新段开始前 1ms」= 前一日 23:59:59.999 UTC，用 UTC 日历日展示，不再多减一天。 */
   function displayEndLabel(r: MemberRateRow): string {
     if (!r.endDate) return 'All future'
-    const end = r.endDate.slice(0, 10)
-    const hasSegmentStartingAtEnd = rows.some(
-      (x) => x.startDate.slice(0, 10) === end,
-    )
-    if (hasSegmentStartingAtEnd) return slashYmd(end)
-    const [y, m, d] = end.split('-').map((p) => parseInt(p, 10))
-    const t = Date.UTC(y, m - 1, d)
-    const prev = new Date(t - 86400000)
-    const py = prev.getUTCFullYear()
-    const pm = String(prev.getUTCMonth() + 1).padStart(2, '0')
-    const pd = String(prev.getUTCDate()).padStart(2, '0')
-    return slashYmd(`${py}-${pm}-${pd}`)
+    const d = new Date(r.endDate)
+    if (Number.isNaN(d.getTime())) return '—'
+    let y = d.getUTCFullYear()
+    let mo = d.getUTCMonth() + 1
+    let day = d.getUTCDate()
+    const midnight =
+      d.getUTCHours() === 0 &&
+      d.getUTCMinutes() === 0 &&
+      d.getUTCSeconds() === 0 &&
+      d.getUTCMilliseconds() === 0
+    if (midnight) {
+      const t = Date.UTC(y, mo - 1, day)
+      const prev = new Date(t - 86400000)
+      y = prev.getUTCFullYear()
+      mo = prev.getUTCMonth() + 1
+      day = prev.getUTCDate()
+    }
+    return `${String(mo).padStart(2, '0')}/${String(day).padStart(2, '0')}/${y}`
   }
 
   return (
