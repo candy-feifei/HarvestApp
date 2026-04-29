@@ -176,39 +176,81 @@ export function TimesheetCalendarMonth({
                     height: GRID_PX,
                   }}
                 />
-                {layouts.map(({ entry, startHour, endHour }) => {
+                {layouts.map(({ entry, startHour, endHour }, layoutIdx) => {
                   const h = endHour - startHour
                   const topPct = (startHour / HOURS) * 100
                   const hPct = (h / HOURS) * 100
+                  const barHeightPx = (h / HOURS) * GRID_PX
+                  const isTiny = barHeightPx < 20
+                  const isCompact = barHeightPx < 48
                   const canEdit = weekGridEditable && !entry.isLocked
+                  const fullLabel = [
+                    formatDecimalHoursAsClock(entry.hours),
+                    entry.projectName,
+                    entry.taskName,
+                    entry.clientName,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
                   return (
                     <button
                       key={entry.id}
                       type="button"
                       disabled={!canEdit}
                       onClick={() => onEditEntry(entry)}
+                      title={fullLabel}
+                      aria-label={fullLabel}
                       className={cn(
-                        'absolute left-0.5 right-0.5 z-10 overflow-hidden rounded-sm px-2 py-1.5 text-left text-white shadow-sm transition',
+                        'absolute left-0.5 right-0.5 rounded-sm px-1.5 text-left text-white shadow-sm transition',
+                        isTiny
+                          ? 'flex items-start justify-end overflow-hidden py-px pr-0.5 pt-0.5'
+                          : isCompact
+                            ? 'flex w-full min-w-0 items-start overflow-hidden py-0.5'
+                            : 'flex min-h-0 w-full min-w-0 flex-col items-stretch justify-start overflow-hidden py-1',
                         canEdit ? 'hover:opacity-95' : 'cursor-not-allowed opacity-75',
                       )}
                       style={{
                         top: `${topPct}%`,
                         height: `${hPct}%`,
-                        minHeight: 36,
                         backgroundColor: ORANGE,
+                        // Later segments stack above earlier ones so a short block’s label isn’t
+                        // painted under the next pipe segment; higher z = closer to the user.
+                        zIndex: 5 + layoutIdx,
                       }}
                     >
-                      <div className="flex h-full min-h-0 flex-col text-[11px] leading-tight">
-                        <div className="flex shrink-0 items-start justify-end gap-1">
-                          {entry.isLocked ? <Lock className="size-3.5 shrink-0 opacity-90" aria-label="Locked" /> : null}
-                          <span className="font-bold tabular-nums">
+                      {isTiny ? (
+                        <span className="max-w-full truncate text-right text-[9px] font-bold leading-none tabular-nums">
+                          {formatDecimalHoursAsClock(entry.hours)}
+                        </span>
+                      ) : isCompact ? (
+                        <div className="flex min-h-0 w-full min-w-0 items-baseline justify-between gap-0.5 text-[10px] leading-tight">
+                          <span className="min-w-0 flex-1 truncate text-left font-semibold">{entry.projectName}</span>
+                          <span className="inline-flex shrink-0 items-baseline gap-0.5 font-bold tabular-nums">
                             {formatDecimalHoursAsClock(entry.hours)}
+                            {entry.isLocked ? (
+                              <Lock className="size-2.5 shrink-0 self-center opacity-90" aria-label="Locked" />
+                            ) : null}
                           </span>
                         </div>
-                        <div className="mt-0.5 truncate font-semibold">{entry.projectName}</div>
-                        <div className="truncate text-white/95">{entry.taskName}</div>
-                        <div className="mt-0.5 truncate text-[10px] text-white/75">{entry.clientName}</div>
-                      </div>
+                      ) : (
+                        <div className="flex min-h-0 w-full min-w-0 flex-col text-[11px] leading-tight">
+                          <div className="flex shrink-0 items-start justify-end gap-1">
+                            {entry.isLocked ? (
+                              <Lock className="size-3.5 shrink-0 opacity-90" aria-label="Locked" />
+                            ) : null}
+                            <span className="font-bold tabular-nums">
+                              {formatDecimalHoursAsClock(entry.hours)}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 min-w-0 [overflow-wrap:anywhere] line-clamp-2 font-semibold">
+                            {entry.projectName}
+                          </div>
+                          <div className="min-w-0 [overflow-wrap:anywhere] line-clamp-2 text-white/95">
+                            {entry.taskName}
+                          </div>
+                          <div className="mt-0.5 min-w-0 truncate text-[10px] text-white/75">{entry.clientName}</div>
+                        </div>
+                      )}
                     </button>
                   )
                 })}

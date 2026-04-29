@@ -201,7 +201,7 @@ export function TrackTimeModal({
   const canPickTask = Boolean(projectTaskId && selectedTask) && !disabledInputs
   const canSaveNewWithHours = !editing && hasManualHours && canPickTask
   const canUpdate = Boolean(editing) && canPickTask
-  const canShowDelete = Boolean(editing) && onDelete && !editing.isLocked
+  const canShowDelete = Boolean(editing && onDelete && !editing.isLocked)
   const busy = isSubmitting || isDeleting
 
   const handleConfirmDelete = async () => {
