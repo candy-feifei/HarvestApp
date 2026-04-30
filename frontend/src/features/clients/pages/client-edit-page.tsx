@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '@/lib/api/http'
@@ -14,6 +14,8 @@ import {
   cnTextarea,
 } from '@/features/clients/client-form-helpers'
 import {
+  archiveClient,
+  deleteClient,
   fetchClient,
   fetchOrganizationContext,
   updateClient,
@@ -67,6 +69,23 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
 
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [dangerError, setDangerError] = useState<string | null>(null)
+
+  const archiveMut = useMutation({
+    mutationFn: () => archiveClient(clientId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['clients'] })
+      navigate('/clients', { replace: true })
+    },
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: () => deleteClient(clientId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['clients'] })
+      navigate('/clients', { replace: true })
+    },
+  })
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -125,9 +144,49 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
   }
 
   const hasActiveProjects = (client.activeProjects?.length ?? 0) > 0
+  const projectCount = client.projectCount ?? 0
+  const canDeleteClient = projectCount === 0
+  const busyDanger = archiveMut.isPending || deleteMut.isPending
+
+  function onArchiveClick() {
+    setDangerError(null)
+    if (!window.confirm('Archive this client? It will be removed from the client list.')) {
+      return
+    }
+    archiveMut.mutate(undefined, {
+      onError: (err) => {
+        if (err instanceof ApiError) {
+          setDangerError(err.message)
+          return
+        }
+        setDangerError('Could not archive. Please try again.')
+      },
+    })
+  }
+
+  function onDeleteClick() {
+    setDangerError(null)
+    if (
+      !window.confirm(
+        'Permanently delete this client? This cannot be undone.',
+      )
+    ) {
+      return
+    }
+    deleteMut.mutate(undefined, {
+      onError: (err) => {
+        if (err instanceof ApiError) {
+          setDangerError(err.message)
+          return
+        }
+        setDangerError('Could not delete. Please try again.')
+      },
+    })
+  }
 
   return (
     <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_280px] lg:items-start">
+      <div className="min-w-0">
       <form onSubmit={onSubmit} className="min-w-0 space-y-0">
         <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-[200px_1fr] sm:items-start">
           <label className={labelCls} htmlFor="edit-client-name">
@@ -329,6 +388,46 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
         </div>
       </form>
 
+      <div className="mt-6 space-y-2 border-t border-border pt-6">
+        <p className="text-xs font-medium text-muted-foreground">Danger zone</p>
+        {dangerError ? (
+          <p className="text-sm text-destructive" role="alert">
+            {dangerError}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9"
+            disabled={hasActiveProjects || busyDanger}
+            title={
+              hasActiveProjects
+                ? 'Archive or close all active projects for this client first'
+                : undefined
+            }
+            onClick={onArchiveClick}
+          >
+            {archiveMut.isPending ? 'Archiving…' : 'Archive client'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            disabled={!canDeleteClient || busyDanger}
+            title={
+              !canDeleteClient
+                ? 'Remove or archive all projects for this client first'
+                : undefined
+            }
+            onClick={onDeleteClick}
+          >
+            {deleteMut.isPending ? 'Deleting…' : 'Delete client'}
+          </Button>
+        </div>
+      </div>
+      </div>
+
       <aside className="space-y-3 lg:sticky lg:top-0">
         <div className="flex flex-col gap-2">
           <Button className="h-9 w-full" asChild>
@@ -341,9 +440,16 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
         <div className="rounded-lg border border-sky-200/90 bg-sky-50/90 px-4 py-3 text-sm">
           <p className="font-semibold text-sky-950">Active projects</p>
           {client.activeProjects && client.activeProjects.length > 0 ? (
-            <ul className="mt-2 list-inside list-disc text-sky-900/90">
+            <ul className="mt-2 space-y-1 list-inside list-disc text-sky-900/90">
               {client.activeProjects.map((p) => (
-                <li key={p.id}>{p.name}</li>
+                <li key={p.id}>
+                  <Link
+                    to={`/projects/${p.id}/edit`}
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    {p.name}
+                  </Link>
+                </li>
               ))}
             </ul>
           ) : (
@@ -352,8 +458,8 @@ function ClientEditForm({ client, ctx, clientId }: ClientEditFormProps) {
         </div>
         {hasActiveProjects && (
           <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
-            While this client has active projects, archiving may be blocked. Update
-            project status in Projects first.
+            You cannot archive &quot;{client.name}&quot; because it has active
+            projects.
           </div>
         )}
       </aside>

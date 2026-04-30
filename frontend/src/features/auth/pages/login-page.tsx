@@ -63,13 +63,14 @@ export function LoginPage() {
           />
           <h1 className="text-xl font-semibold tracking-tight">Sign in to Chrona</h1>
         </div>
-        <form className="space-y-4" onSubmit={onSubmit}>
+        <form className="space-y-4" onSubmit={onSubmit} data-testid="login-form">
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="email">
               Email
             </label>
             <input
               id="email"
+              data-testid="login-email"
               type="email"
               autoComplete="email"
               value={email}
@@ -84,6 +85,7 @@ export function LoginPage() {
             </label>
             <input
               id="password"
+              data-testid="login-password"
               type="password"
               autoComplete="current-password"
               value={password}
@@ -105,7 +107,12 @@ export function LoginPage() {
               {error}
             </p>
           ) : null}
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loading}
+            data-testid="login-submit"
+          >
             {loading ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>

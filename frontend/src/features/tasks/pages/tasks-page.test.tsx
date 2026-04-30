@@ -41,7 +41,7 @@ describe('TasksPage', () => {
     queryClient.clear()
   })
 
-  it('加载后展示标题并触发 listTasks', async () => {
+  it('renders title after load and calls listTasks', async () => {
     render(
       <TestRoot>
         <TasksPage />

@@ -144,18 +144,20 @@ export class ClientsService {
           select: { id: true, name: true },
           orderBy: { name: 'asc' },
         },
+        _count: { select: { projects: true } },
       },
     })
     if (!row) {
       throw new NotFoundException('未找到该客户或无权访问')
     }
-    const { projects, ...client } = row
+    const { projects, _count, ...client } = row
     return {
       ...this.withResolvedCurrency(
         client,
         membership.organization.defaultCurrency,
       ),
       activeProjects: projects,
+      projectCount: _count.projects,
     }
   }
 
@@ -234,6 +236,55 @@ export class ClientsService {
       client,
       membership.organization.defaultCurrency,
     )
+  }
+
+  async archive(membership: ActiveMembership, id: string) {
+    const row = await this.prisma.client.findFirst({
+      where: {
+        id,
+        organizationId: membership.organizationId,
+        isArchived: false,
+      },
+    })
+    if (!row) {
+      throw new NotFoundException('未找到该客户或无权访问')
+    }
+    const activeCount = await this.prisma.project.count({
+      where: { clientId: id, isArchived: false },
+    })
+    if (activeCount > 0) {
+      throw new BadRequestException(
+        `You cannot archive “${row.name}” because it has active projects.`,
+      )
+    }
+    await this.prisma.client.update({
+      where: { id },
+      data: { isArchived: true },
+    })
+    return { archived: true as const }
+  }
+
+  async remove(membership: ActiveMembership, id: string) {
+    const row = await this.prisma.client.findFirst({
+      where: {
+        id,
+        organizationId: membership.organizationId,
+        isArchived: false,
+      },
+    })
+    if (!row) {
+      throw new NotFoundException('未找到该客户或无权访问')
+    }
+    const projectCount = await this.prisma.project.count({
+      where: { clientId: id },
+    })
+    if (projectCount > 0) {
+      throw new BadRequestException(
+        'Delete all projects for this client (or archive them) before deleting the client.',
+      )
+    }
+    await this.prisma.client.delete({ where: { id } })
+    return { deleted: true as const }
   }
 
   async create(membership: ActiveMembership, dto: CreateClientDto) {

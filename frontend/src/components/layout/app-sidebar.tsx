@@ -15,11 +15,6 @@ import { fetchApprovalsView } from '@/features/approvals/api'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const brand = {
-  /** 参考线稿主色 */
-  primary: '#0061FF',
-}
-
 function nameInitials(first: string, last: string) {
   const a = (first.trim()[0] ?? '').toUpperCase()
   const b = (last.trim()[0] ?? '').toUpperCase()
@@ -131,6 +126,7 @@ export function AppSidebar() {
                   <li key={item.id}>
                     <Link
                       to={item.to}
+                      data-testid={`sidebar-nav-${item.id}`}
                       className={cn(
                         'group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium transition-colors',
                         !isActive && [
@@ -138,7 +134,7 @@ export function AppSidebar() {
                           'hover:bg-muted/80 hover:text-foreground',
                         ],
                         isActive && [
-                          'bg-[#0061FF] font-semibold text-white shadow-sm',
+                          'bg-primary font-semibold text-primary-foreground shadow-sm',
                         ],
                       )}
                     >
@@ -158,8 +154,8 @@ export function AppSidebar() {
                           className={cn(
                             'flex min-w-6 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
                             isActive
-                              ? 'bg-white/20 text-white'
-                              : 'bg-[#0061FF] text-white',
+                              ? 'bg-primary-foreground/20 text-primary-foreground'
+                              : 'bg-primary text-primary-foreground',
                           )}
                           title="Pending"
                         >
@@ -183,10 +179,11 @@ export function AppSidebar() {
             <Link
               key={item.id}
               to={item.to}
+              data-testid={`sidebar-nav-${item.id}`}
               className={cn(
                 'flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors',
                 active
-                  ? 'font-medium text-[#0061FF]'
+                  ? 'font-medium text-primary'
                   : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground',
               )}
             >
@@ -202,10 +199,7 @@ export function AppSidebar() {
 
         <div className="mt-2 rounded-lg border border-border/80 bg-muted/20 px-2.5 py-2.5">
           <div className="flex items-center gap-3">
-            <div
-              className="flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-              style={{ backgroundColor: brand.primary }}
-            >
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
               {initials}
             </div>
             <div className="min-w-0 flex-1">
