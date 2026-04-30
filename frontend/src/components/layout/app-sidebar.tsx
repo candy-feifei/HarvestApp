@@ -15,11 +15,6 @@ import { fetchApprovalsView } from '@/features/approvals/api'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const brand = {
-  /** 参考线稿主色 */
-  primary: '#0061FF',
-}
-
 function nameInitials(first: string, last: string) {
   const a = (first.trim()[0] ?? '').toUpperCase()
   const b = (last.trim()[0] ?? '').toUpperCase()
