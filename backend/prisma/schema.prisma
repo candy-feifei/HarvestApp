@@ -89,8 +89,6 @@ model UserOrganization {
   inviteToken     String?      @unique
   inviteExpiresAt DateTime?
   systemRole      SystemRole   @default(MEMBER)
-  /// 仅当 systemRole=MANAGER 时有效；额外能力开关（Harvest 风格 8 项）
-  managerPermissions Json?
   customRoles     Role[]
 
   managerId    String?
@@ -98,8 +96,6 @@ model UserOrganization {
   subordinates UserOrganization[] @relation("ManagerToPeople")
 
   weeklyCapacity  Int            @default(40)
-  /// 勾选后，新创建的项目会自动将该用户加入为成员（isManager 默认为 false，可在单项目上再调）
-  assignAllFutureProjects Boolean  @default(false)
   /// 下属提交工时报时是否邮件通知此人（Manager 流程）
   emailNotifyManagedPeopleTimesheets  Boolean  @default(true) @map("email_notify_managed_people_timesheets")
   /// 其负责项目上有成员提交工时报时是否邮件通知此人
@@ -469,6 +465,11 @@ enum BudgetType {
   NO_BUDGET
 }
 
+enum TimerStatus {
+  RUNNING
+  STOPPED
+}
+
 enum EntryStatus {
   UNSUBMITTED
   SUBMITTED
@@ -482,30 +483,8 @@ enum ApprovalStatus {
   WITHDRAWN
 }
 
-enum TimerStatus {
-  RUNNING
-  STOPPED
-}
-
 /// 客户发票账期方式
 enum InvoiceDueMode {
   UPON_RECEIPT
   NET_DAYS
-}
-
-/// Approval/report page time granularity
-enum ReportPeriod {
-  DAY
-  WEEK
-  SEMIMONTH
-  MONTH
-  QUARTER
-  CUSTOM
-}
-
-/// Approval page table grouping method
-enum ApprovalsGroupBy {
-  PERSON
-  PROJECT
-  CLIENT
 }
