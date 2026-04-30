@@ -35,7 +35,17 @@ function toNum(
 }
 
 const projectDetailInclude = {
-  client: { select: { id: true, name: true } },
+  client: {
+    select: {
+      id: true,
+      name: true,
+      invoiceDueMode: true,
+      invoiceNetDays: true,
+      taxRate: true,
+      secondaryTaxRate: true,
+      discountRate: true,
+    },
+  },
   projectTasks: {
     include: {
       task: { select: { name: true } },
@@ -66,31 +76,6 @@ function projectInvoiceDueModeToUi(
   return 'net_60' as const
 }
 
-function sanitizeMetadataInput(
-  m: Record<string, unknown> | null | undefined,
-): Prisma.InputJsonValue | typeof Prisma.JsonNull {
-  if (m == null) {
-    return Prisma.JsonNull
-  }
-  const { tasks: _a, team: _b, invoice: _c, ...rest } = m
-  if (Object.keys(rest).length === 0) {
-    return Prisma.JsonNull
-  }
-  return rest as Prisma.InputJsonValue
-}
-
-function metadataForApi(raw: Prisma.JsonValue | null) {
-  if (raw == null) return null
-  if (typeof raw !== 'object' || Array.isArray(raw)) {
-    return raw
-  }
-  const { tasks: _t, team: _g, invoice: _i, ...rest } = raw as Record<string, unknown>
-  if (Object.keys(rest).length === 0) {
-    return null
-  }
-  return rest
-}
-
 @Injectable()
 export class ProjectsService {
   constructor(
@@ -104,14 +89,21 @@ export class ProjectsService {
     }> & {
       projectTasks?: ProjectDetail['projectTasks']
       assignments?: ProjectDetail['assignments']
+      client?: {
+        id: string
+        name: string
+        invoiceDueMode?: InvoiceDueMode
+        invoiceNetDays?: number | null
+        taxRate?: Prisma.Decimal | null
+        secondaryTaxRate?: Prisma.Decimal | null
+        discountRate?: Prisma.Decimal | null
+      }
     },
     overrides?: {
       spentAmount?: number
       costsAmount?: number
     },
   ) {
-    const rawMeta = (p.metadata as Record<string, unknown> | null) ?? null
-
     const fromRelTasks =
       p.projectTasks?.map((pt) => ({
         taskId: pt.taskId,
@@ -126,11 +118,7 @@ export class ProjectsService {
         isManager: a.isManager,
         billableRate: toNum(a.projectBillableRate) ?? 0,
       })) ?? []
-    const legacyTasks = Array.isArray(rawMeta?.tasks) ? rawMeta.tasks : []
-    const legacyTeam = Array.isArray(rawMeta?.team) ? rawMeta.team : []
-    const tasks = fromRelTasks.length > 0 ? fromRelTasks : legacyTasks
-    const team = fromRelTeam.length > 0 ? fromRelTeam : legacyTeam
-
+    const c = p.client
     return {
       id: p.id,
       name: p.name,
@@ -143,25 +131,28 @@ export class ProjectsService {
       budgetAmount: toNum(p.budgetAmount),
       notifyAt: p.notifyAt,
       isArchived: p.isArchived,
-      isPinned: p.isPinned,
-      startsOn: toIso(p.startsOn),
-      endsOn: toIso(p.endsOn),
-      notes: p.notes,
-      metadata: metadataForApi(p.metadata),
-      clientId: p.client.id,
-      clientName: p.client.name,
+      isPinned: false,
+      startsOn: null,
+      endsOn: null,
+      notes: null,
+      metadata: null,
+      clientId: c.id,
+      clientName: c.name,
       organizationId: p.organizationId,
       spentAmount: overrides?.spentAmount ?? 0,
       costsAmount: overrides?.costsAmount ?? 0,
-      tasks,
-      team,
+      tasks: fromRelTasks,
+      team: fromRelTeam,
       invoice: {
-        dueMode: projectInvoiceDueModeToUi(p.invoiceDueMode, p.invoiceNetDays),
-        poNumber: p.invoicePoNumber ?? '',
-        taxPercent: toNum(p.invoiceTaxPercent) ?? 0,
-        secondTaxEnabled: p.invoiceSecondTaxEnabled,
-        secondTaxPercent: toNum(p.invoiceSecondTaxPercent) ?? 0,
-        discountPercent: toNum(p.invoiceDiscountPercent) ?? 0,
+        dueMode: projectInvoiceDueModeToUi(
+          c.invoiceDueMode ?? 'UPON_RECEIPT',
+          c.invoiceNetDays ?? null,
+        ),
+        poNumber: '',
+        taxPercent: c.taxRate != null ? toNum(c.taxRate) ?? 0 : 0,
+        secondTaxEnabled: (c.secondaryTaxRate != null && c.secondaryTaxRate.toNumber() > 0),
+        secondTaxPercent: c.secondaryTaxRate != null ? toNum(c.secondaryTaxRate) ?? 0 : 0,
+        discountPercent: c.discountRate != null ? toNum(c.discountRate) ?? 0 : 0,
       },
     }
   }
@@ -279,8 +270,20 @@ export class ProjectsService {
         where: { organizationId: orgId },
         skip,
         take,
-        orderBy: [{ isPinned: 'desc' }, { updatedAt: 'desc' }],
-        include: { client: { select: { id: true, name: true } } },
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          client: {
+            select: {
+              id: true,
+              name: true,
+              invoiceDueMode: true,
+              invoiceNetDays: true,
+              taxRate: true,
+              secondaryTaxRate: true,
+              discountRate: true,
+            },
+          },
+        },
       }),
       this.prisma.project.count({ where: { organizationId: orgId } }),
     ])
@@ -466,26 +469,6 @@ export class ProjectsService {
       budgetAmount: toDecimal(dto.budgetAmount),
       notifyAt: dto.notifyAt,
       isArchived: dto.isArchived ?? false,
-      isPinned: dto.isPinned ?? false,
-      startsOn: dto.startsOn ? new Date(dto.startsOn) : null,
-      endsOn: dto.endsOn ? new Date(dto.endsOn) : null,
-      notes: dto.notes,
-      invoiceDueMode: dto.invoiceDueMode ?? 'UPON_RECEIPT',
-      invoiceNetDays:
-        (dto.invoiceDueMode ?? 'UPON_RECEIPT') === 'NET_DAYS'
-          ? (dto.invoiceNetDays ?? 30)
-          : null,
-      invoicePoNumber: dto.invoicePoNumber,
-      invoiceTaxPercent: toDecimal(dto.invoiceTaxPercent) ?? null,
-      invoiceSecondTaxEnabled: dto.invoiceSecondTaxEnabled ?? false,
-      invoiceSecondTaxPercent:
-        (dto.invoiceSecondTaxEnabled ?? false)
-          ? toDecimal(dto.invoiceSecondTaxPercent) ?? null
-          : null,
-      invoiceDiscountPercent: toDecimal(dto.invoiceDiscountPercent) ?? null,
-      metadata: sanitizeMetadataInput(
-        dto.metadata as Record<string, unknown> | undefined,
-      ) as Prisma.InputJsonValue,
       client: { connect: { id: dto.clientId } },
       organization: { connect: { id: m.organizationId } },
       projectTasks:
@@ -515,29 +498,6 @@ export class ProjectsService {
       data,
       include: projectDetailInclude,
     })
-
-    const assignedUserIds = new Set(assignLines.map((a) => a.userId))
-    const auto = await this.prisma.userOrganization.findMany({
-      where: {
-        organizationId: m.organizationId,
-        status: 'ACTIVE',
-        assignAllFutureProjects: true,
-      },
-      select: { userId: true },
-    })
-    const extraUserIds = auto
-      .map((r) => r.userId)
-      .filter((uid) => !assignedUserIds.has(uid))
-    if (extraUserIds.length > 0) {
-      await this.prisma.projectAssignment.createMany({
-        data: extraUserIds.map((userId) => ({
-          projectId: p.id,
-          userId,
-          isManager: false,
-        })),
-        skipDuplicates: true,
-      })
-    }
 
     const full = await this.prisma.project.findFirst({
       where: { id: p.id },
@@ -589,47 +549,6 @@ export class ProjectsService {
     if (dto.budgetAmount !== undefined) u.budgetAmount = toDecimal(dto.budgetAmount)
     if (dto.notifyAt !== undefined) u.notifyAt = dto.notifyAt
     if (dto.isArchived != null) u.isArchived = dto.isArchived
-    if (dto.isPinned != null) u.isPinned = dto.isPinned
-    if (dto.startsOn !== undefined) {
-      u.startsOn = dto.startsOn ? new Date(dto.startsOn) : null
-    }
-    if (dto.endsOn !== undefined) u.endsOn = dto.endsOn ? new Date(dto.endsOn) : null
-    if (dto.notes !== undefined) u.notes = dto.notes
-    if (dto.invoiceDueMode !== undefined) {
-      u.invoiceDueMode = dto.invoiceDueMode
-      u.invoiceNetDays =
-        dto.invoiceDueMode === 'NET_DAYS'
-          ? (dto.invoiceNetDays ?? existing.invoiceNetDays ?? 30)
-          : null
-    } else if (dto.invoiceNetDays !== undefined) {
-      u.invoiceNetDays =
-        existing.invoiceDueMode === 'NET_DAYS' ? dto.invoiceNetDays : null
-    }
-    if (dto.invoicePoNumber !== undefined) u.invoicePoNumber = dto.invoicePoNumber
-    if (dto.invoiceTaxPercent !== undefined) {
-      u.invoiceTaxPercent = toDecimal(dto.invoiceTaxPercent) ?? null
-    }
-    if (dto.invoiceSecondTaxEnabled !== undefined) {
-      u.invoiceSecondTaxEnabled = dto.invoiceSecondTaxEnabled
-      if (!dto.invoiceSecondTaxEnabled) u.invoiceSecondTaxPercent = null
-    }
-    if (dto.invoiceSecondTaxPercent !== undefined) {
-      const enabled =
-        dto.invoiceSecondTaxEnabled ??
-        (existing as { invoiceSecondTaxEnabled?: boolean }).invoiceSecondTaxEnabled ??
-        false
-      u.invoiceSecondTaxPercent = enabled
-        ? toDecimal(dto.invoiceSecondTaxPercent) ?? null
-        : null
-    }
-    if (dto.invoiceDiscountPercent !== undefined) {
-      u.invoiceDiscountPercent = toDecimal(dto.invoiceDiscountPercent) ?? null
-    }
-    if (dto.metadata !== undefined) {
-      u.metadata = sanitizeMetadataInput(
-        dto.metadata as Record<string, unknown> | null,
-      ) as Prisma.InputJsonValue
-    }
     if (dto.clientId != null) u.client = { connect: { id: dto.clientId } }
 
     await this.prisma.project.update({

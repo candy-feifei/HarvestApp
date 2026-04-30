@@ -13,6 +13,7 @@
 
 | 文件 | 适用环节 |
 |------|----------|
+| [AI-usage-guide.md](./AI-usage-guide.md) | 团队 AI 使用说明、安全与流程、与比赛材料对齐 |
 | [prd.md](./prd.md) | 需求拆解、PRD、用户故事、验收标准 |
 | [nest-module.md](./nest-module.md) | Nest 模块、DTO、接口、错误与权限 |
 | [frontend-feature.md](./frontend-feature.md) | 前端 `features/` 页面、Query、`apiRequest` |

@@ -79,6 +79,24 @@ export class ExpensesController {
     return this.expensesService.submitWeek(m, user, body)
   }
 
+  @Post('withdraw-week')
+  @ApiHeader({ name: 'X-Organization-Id', required: false })
+  @ApiOperation({
+    summary:
+      'Withdraw submitted/approved expenses in an ISO week (back to draft); approvers or approved lines may require manager',
+  })
+  async withdrawWeek(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-organization-id') xOrganizationId: string | undefined,
+    @Body() body: SubmitWeekDto,
+  ) {
+    const m = await this.orgContext.getActiveMembership(
+      user.userId,
+      xOrganizationId,
+    )
+    return this.expensesService.withdrawWeek(m, user, body)
+  }
+
   @Post()
   @ApiHeader({ name: 'X-Organization-Id', required: false })
   @ApiOperation({ summary: 'Create an expense' })

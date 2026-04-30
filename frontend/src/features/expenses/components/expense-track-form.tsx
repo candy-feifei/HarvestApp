@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/lib/api/http'
 import { cn } from '@/lib/utils'
@@ -49,6 +49,8 @@ export function ExpenseTrackForm({ open, onClose }: ExpenseTrackFormProps) {
   const [isBillable, setIsBillable] = useState(true)
   const [isReimbursable, setIsReimbursable] = useState(false)
   const [unitQty, setUnitQty] = useState('')
+
+  const receiptFileInputRef = useRef<HTMLInputElement>(null)
 
   const currency = options?.defaultCurrency ?? 'USD'
   const category = useMemo(
@@ -222,81 +224,110 @@ export function ExpenseTrackForm({ open, onClose }: ExpenseTrackFormProps) {
             />
           </label>
           <div className="block text-sm">
-            <span className="text-muted-foreground">
-              Receipt (optional — upload or paste a link)
-            </span>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-              className={cn('mt-1 block w-full text-sm', inputClass)}
-              onChange={async (e) => {
-                setReceiptUploadError(null)
-                const f = e.target.files?.[0]
-                e.target.value = ''
-                if (!f) return
-                setReceiptUploading(true)
-                setReceiptName(f.name)
-                try {
-                  const { receiptUrl: url } = await uploadExpenseReceipt(f)
-                  setReceiptUrl(url)
-                } catch (ex) {
-                  setReceiptName(null)
-                  setReceiptUrl('')
-                  setReceiptUploadError(
-                    ex instanceof ApiError
-                      ? ex.message
-                      : ex instanceof Error
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                Attach receipt to expense
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Optional — upload a file, or paste a link below.
+              </p>
+              <input
+                ref={receiptFileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                className="sr-only"
+                tabIndex={-1}
+                aria-label="Upload receipt file"
+                onChange={async (e) => {
+                  setReceiptUploadError(null)
+                  const f = e.target.files?.[0]
+                  e.target.value = ''
+                  if (!f) return
+                  setReceiptUploading(true)
+                  setReceiptName(f.name)
+                  try {
+                    const { receiptUrl: url } = await uploadExpenseReceipt(f)
+                    setReceiptUrl(url)
+                  } catch (ex) {
+                    setReceiptName(null)
+                    setReceiptUrl('')
+                    setReceiptUploadError(
+                      ex instanceof ApiError
                         ? ex.message
-                        : 'Upload failed',
-                  )
-                } finally {
-                  setReceiptUploading(false)
-                }
-              }}
-            />
-            {receiptUrl ? (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {receiptName ? `Selected: ${receiptName} · ` : null}
-                <a
-                  href={receiptUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-primary underline"
-                >
-                  View / download
-                </a>
-                {' · '}
+                        : ex instanceof Error
+                          ? ex.message
+                          : 'Upload failed',
+                    )
+                  } finally {
+                    setReceiptUploading(false)
+                  }
+                }}
+              />
+              <div className="mt-2.5 flex w-full min-w-0 items-stretch overflow-hidden rounded-md border border-input bg-background shadow-xs">
                 <button
                   type="button"
-                  className="text-destructive underline"
-                  onClick={() => {
-                    setReceiptUrl('')
-                    setReceiptName(null)
-                    setReceiptUploadError(null)
-                  }}
+                  className="shrink-0 border-r border-input bg-muted/50 px-3.5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline focus-visible:ring-2 focus-visible:ring-ring/40"
+                  onClick={() => receiptFileInputRef.current?.click()}
                 >
-                  Clear
+                  Choose file
                 </button>
-              </p>
-            ) : null}
-            {receiptUploading ? (
-              <p className="mt-1 text-xs text-muted-foreground">Uploading…</p>
-            ) : null}
-            {receiptUploadError ? (
-              <p className="mt-1 text-xs text-destructive">
-                {receiptUploadError}
-              </p>
-            ) : null}
-            <input
-              type="url"
-              className={cn('mt-2', inputClass)}
-              value={receiptUrl}
-              onChange={(e) => {
-                setReceiptName(null)
-                setReceiptUrl(e.target.value)
-              }}
-              placeholder="Or paste a link to the receipt"
-            />
+                <div
+                  className="min-w-0 flex-1 truncate bg-background px-3 py-2.5 text-left text-sm text-foreground/90"
+                  title={receiptName ?? undefined}
+                >
+                  {receiptName
+                    ? receiptName
+                    : 'No file chosen'}
+                </div>
+              </div>
+              {receiptUrl && receiptName ? (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  <a
+                    href={receiptUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary font-medium underline underline-offset-2"
+                  >
+                    View / download
+                  </a>
+                  <span className="mx-1.5 text-muted-foreground/60">·</span>
+                  <button
+                    type="button"
+                    className="text-destructive font-medium underline underline-offset-2"
+                    onClick={() => {
+                      setReceiptUrl('')
+                      setReceiptName(null)
+                      setReceiptUploadError(null)
+                    }}
+                  >
+                    Clear
+                  </button>
+                </p>
+              ) : null}
+              {receiptUploading ? (
+                <p className="mt-1.5 text-xs text-muted-foreground">Uploading…</p>
+              ) : null}
+              {receiptUploadError ? (
+                <p className="mt-1.5 text-xs text-destructive">
+                  {receiptUploadError}
+                </p>
+              ) : null}
+              <label className="mt-3 block">
+                <span className="mb-1 block text-xs text-muted-foreground">
+                  Or paste a link
+                </span>
+                <input
+                  type="url"
+                  className={inputClass}
+                  value={receiptUrl}
+                  onChange={(e) => {
+                    setReceiptName(null)
+                    setReceiptUrl(e.target.value)
+                  }}
+                  placeholder="https://…"
+                />
+              </label>
+            </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input

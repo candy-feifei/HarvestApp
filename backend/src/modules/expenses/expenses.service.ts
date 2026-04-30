@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
@@ -62,6 +63,10 @@ function d(v: Prisma.Decimal | null | undefined): string | null {
 @Injectable()
 export class ExpensesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private isElevatedRole(role: string): boolean {
+    return role === 'ADMINISTRATOR' || role === 'MANAGER'
+  }
 
   private async assertProjectInOrg(
     orgId: string,
@@ -467,6 +472,84 @@ export class ExpensesService {
     })
     return {
       submittedCount: r.count,
+      weekFrom: from.toISOString(),
+      toExclusive: toExclusive.toISOString(),
+    }
+  }
+
+  /**
+   * 撤回本 ISO 周内已提交/已批准的费用，恢复为可编辑（UNSUBMITTED）。
+   * 普通成员可撤回仅「已提交、待经理审批」的周；已含已批准行时，仅经理/管理员可整周解锁。
+   */
+  async withdrawWeek(
+    membership: ActiveMembership,
+    user: CurrentUserPayload,
+    body: SubmitWeekDto,
+  ) {
+    const dayStart = utcDayStart(body.weekOf)
+    const from = startOfIsoWeekFromUtcDate(dayStart)
+    const toExclusive = addUtcDays(from, 7)
+    const weekLastDayStart = addUtcDays(from, 6)
+    const orgId = membership.organizationId
+    const elevated = this.isElevatedRole(membership.systemRole)
+
+    const rows = await this.prisma.expense.findMany({
+      where: {
+        userId: user.userId,
+        project: { organizationId: orgId },
+        spentDate: { gte: from, lt: toExclusive },
+      },
+      select: { id: true, status: true },
+    })
+    if (rows.length === 0) {
+      throw new BadRequestException('No expenses in this week.')
+    }
+    const hasApproved = rows.some((r) => r.status === 'APPROVED')
+    if (hasApproved && !elevated) {
+      throw new ForbiddenException(
+        'Only an administrator or manager can withdraw a week that includes approved expenses.',
+      )
+    }
+    const hasSubmittedOrApproved = rows.some(
+      (r) => r.status === 'SUBMITTED' || r.status === 'APPROVED',
+    )
+    if (!hasSubmittedOrApproved) {
+      return {
+        unlockedCount: 0,
+        weekFrom: from.toISOString(),
+        toExclusive: toExclusive.toISOString(),
+      }
+    }
+
+    const r = await this.prisma.expense.updateMany({
+      where: {
+        userId: user.userId,
+        project: { organizationId: orgId },
+        spentDate: { gte: from, lt: toExclusive },
+        status: { in: ['SUBMITTED', 'APPROVED'] },
+      },
+      data: {
+        status: 'UNSUBMITTED',
+        isLocked: false,
+        approvalId: null,
+      },
+    })
+    const win = await this.prisma.approval.findFirst({
+      where: {
+        submitterId: user.userId,
+        periodStart: { lte: from },
+        periodEnd: { gte: weekLastDayStart },
+      },
+      orderBy: [{ periodStart: 'desc' }, { id: 'desc' }],
+    })
+    if (win) {
+      await this.prisma.approval.update({
+        where: { id: win.id },
+        data: { status: 'WITHDRAWN' },
+      })
+    }
+    return {
+      unlockedCount: r.count,
       weekFrom: from.toISOString(),
       toExclusive: toExclusive.toISOString(),
     }

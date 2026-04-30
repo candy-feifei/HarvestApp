@@ -316,6 +316,16 @@ export function ReportsPage() {
     () => computeDateRange(period, anchor, custom),
     [period, anchor, custom],
   )
+
+  const isViewingCurrentRange = useMemo(() => {
+    const { anchor: targetA, custom: targetC } = returnToCurrentRange(period)
+    const r1 = computeDateRange(period, anchor, custom)
+    const r2 = computeDateRange(period, targetA, targetC)
+    return (
+      r1.from.getTime() === r2.from.getTime() && r1.to.getTime() === r2.to.getTime()
+    )
+  }, [period, anchor, custom])
+
   const fromYmd = localYmd(from)
   const toYmd = localYmd(to)
 
@@ -595,15 +605,17 @@ export function ReportsPage() {
         period === 'DAY' ||
         period === 'MONTH' ||
         period === 'QUARTER' ||
-        period === 'SEMIMONTH' ? (
-          <button
-            type="button"
-            className="text-sm text-primary hover:underline"
-            onClick={onReturnCurrent}
-          >
-            {returnLink(period)}
-          </button>
-        ) : null}
+        period === 'SEMIMONTH'
+          ? !isViewingCurrentRange && (
+              <button
+                type="button"
+                className="text-sm text-primary hover:underline"
+                onClick={onReturnCurrent}
+              >
+                {returnLink(period)}
+              </button>
+            )
+          : null}
         <div className="ms-auto" />
         <Button type="button" variant="outline" size="sm" onClick={saveToStorage}>
           Save report
