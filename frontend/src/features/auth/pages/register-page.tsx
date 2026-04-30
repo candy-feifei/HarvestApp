@@ -33,7 +33,7 @@ export function RegisterPage() {
       navigate(defaultAppLandingPath, { replace: true });
     } catch (err) {
       const message =
-        err instanceof ApiError ? err.message : '注册失败，请稍后重试';
+        err instanceof ApiError ? err.message : 'Registration failed. Please try again.';
       setError(message);
     } finally {
       setLoading(false);
@@ -44,13 +44,15 @@ export function RegisterPage() {
     <div className="flex min-h-svh flex-col items-center justify-center bg-background p-6">
       <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6 shadow-sm">
         <div className="space-y-1 text-center">
-          <h1 className="text-xl font-semibold tracking-tight">注册</h1>
-          <p className="text-sm text-muted-foreground">使用工作邮箱与密码创建账号</p>
+          <h1 className="text-xl font-semibold tracking-tight">Create account</h1>
+          <p className="text-sm text-muted-foreground">
+            Sign up with your work email and a password.
+          </p>
         </div>
         <form className="space-y-4" onSubmit={onSubmit}>
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="reg-email">
-              邮箱
+              Email
             </label>
             <input
               id="reg-email"
@@ -64,7 +66,7 @@ export function RegisterPage() {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="reg-name">
-              姓名（选填）
+              Full name (optional)
             </label>
             <input
               id="reg-name"
@@ -77,7 +79,7 @@ export function RegisterPage() {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="reg-password">
-              密码（至少 8 位）
+              Password (at least 8 characters)
             </label>
             <input
               id="reg-password"
@@ -96,13 +98,13 @@ export function RegisterPage() {
             </p>
           ) : null}
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? '提交中…' : '注册并登录'}
+            {loading ? 'Submitting…' : 'Register and sign in'}
           </Button>
         </form>
         <p className="text-center text-sm text-muted-foreground">
-          已有账号？{' '}
+          Already have an account?{' '}
           <Link to="/login" className="text-primary underline-offset-4 hover:underline">
-            登录
+            Sign in
           </Link>
         </p>
       </div>

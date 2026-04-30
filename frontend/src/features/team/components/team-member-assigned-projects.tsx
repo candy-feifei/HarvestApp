@@ -84,7 +84,7 @@ function showClientSubline(p: Pending): boolean {
   return true
 }
 
-/** 单行删除后底部提示，可点 Reassign 恢复 */
+/** Toast after removing a row; user can click Reassign to undo. */
 type RemovalFeedback = Pending
 
 export function TeamMemberAssignedProjectsPanel(props: {
@@ -96,7 +96,7 @@ export function TeamMemberAssignedProjectsPanel(props: {
   const { memberId, firstName, isActive, canEdit } = props
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
-  /** 进入页面时与 Harvest 一致：先只显示搜索 + Assign，树状列表点击/聚焦搜索再展开 */
+  /** Harvest-style: search + Assign first; tree opens after click or focusing search. */
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [futureLocal, setFutureLocal] = useState<boolean | null>(null)
   const [futureDirty, setFutureDirty] = useState(false)
@@ -144,7 +144,7 @@ export function TeamMemberAssignedProjectsPanel(props: {
     [pending],
   )
 
-  /** 树上只显示「尚未加入下方列表」的项目，已分配的不重复出现 */
+  /** Tree only lists projects not already in the assigned list below. */
   const pickerTree: { clients: MemberProjectClientGroup[] } = useMemo(() => {
     const data = q.data
     if (!data) return { clients: [] }

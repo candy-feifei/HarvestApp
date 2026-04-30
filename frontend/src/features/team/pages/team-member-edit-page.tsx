@@ -150,7 +150,7 @@ export function TeamMemberEditPage() {
     ]
   }, [member?.timezone])
 
-  /** 组织里配置的角色名；若已保存的某段 jobLabel 不在列表中则保留以兼容历史数据 */
+  /** Org role names; include any saved jobLabel segment missing from org list (legacy rows). */
   const jobRoleSelectOptions = useMemo(() => {
     const items = teamRolesQ.data?.items ?? []
     const fromOrg = new Set(
@@ -1180,8 +1180,8 @@ function RatesTable({
   }
 
   /**
-   * 自下而上按时间从旧到新：最下一行为最早段（如 All prior），最上行为最新/当前向未来的一段。
-   * 排序为 start 降序，与接口约定一致。
+   * Chronological when read bottom → top: earliest row at bottom (e.g. “All prior”), newest at top.
+   * Sorted by start date descending to match API ordering.
    */
   const displayRows = useMemo(() => {
     return [...rows].sort(
@@ -1206,7 +1206,7 @@ function RatesTable({
     return acc
   }, null)
 
-  /** 与后端一致：endDate 多为「新段开始前 1ms」= 前一日 23:59:59.999 UTC，用 UTC 日历日展示，不再多减一天。 */
+  /** Match backend: endDate is usually 1 ms before next segment start; show inclusive end in UTC calendar day. */
   function displayEndLabel(r: MemberRateRow): string {
     if (!r.endDate) return 'All future'
     const d = new Date(r.endDate)

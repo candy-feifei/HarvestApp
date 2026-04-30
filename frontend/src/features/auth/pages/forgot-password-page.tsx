@@ -19,7 +19,7 @@ export function ForgotPasswordPage() {
       setDone(true)
     } catch (err) {
       const message =
-        err instanceof ApiError ? err.message : '请求失败，请稍后重试'
+        err instanceof ApiError ? err.message : 'Request failed. Please try again.'
       setError(message)
     } finally {
       setLoading(false)
@@ -30,20 +30,22 @@ export function ForgotPasswordPage() {
     <div className="flex min-h-svh flex-col items-center justify-center bg-background p-6">
       <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6 shadow-sm">
         <div className="space-y-1 text-center">
-          <h1 className="text-xl font-semibold tracking-tight">忘记密码</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Forgot password</h1>
           <p className="text-sm text-muted-foreground">
-            若该邮箱已注册，你将收到含重置链接的邮件（未配置 SMTP 时仅后端日志可见链接）
+            If the email is registered, we will send reset instructions. When SMTP is not
+            configured, the link may only appear in the server logs.
           </p>
         </div>
         {done ? (
           <p className="text-sm text-center text-muted-foreground">
-            若该邮箱在系统中存在，我们已发送重置说明。请检查邮箱或开发环境服务器日志。
+            If that address exists in our system, we have sent reset instructions. Check your
+            inbox or your development server logs.
           </p>
         ) : (
           <form className="space-y-4" onSubmit={onSubmit}>
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="fp-email">
-                邮箱
+                Email
               </label>
               <input
                 id="fp-email"
@@ -61,7 +63,7 @@ export function ForgotPasswordPage() {
               </p>
             ) : null}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? '提交中…' : '发送重置说明'}
+              {loading ? 'Submitting…' : 'Send reset instructions'}
             </Button>
           </form>
         )}
@@ -70,7 +72,7 @@ export function ForgotPasswordPage() {
             to="/login"
             className="text-primary underline-offset-4 hover:underline"
           >
-            返回登录
+            Back to sign in
           </Link>
         </p>
       </div>

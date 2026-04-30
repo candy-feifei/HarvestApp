@@ -16,9 +16,9 @@ import {
 
 type AuthContextValue = {
   accessToken: string | null
-  /** 登录成功：写入 sessionStorage 并触发重渲染 */
+  /** Persist token in sessionStorage and refresh consumers. */
   setSessionToken: (token: string) => void
-  /** 登出：清除令牌 */
+  /** Clear token and sign out locally. */
   logout: () => void
   isAuthenticated: boolean
 }
@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) {
-    throw new Error('useAuth 必须在 AuthProvider 内使用')
+    throw new Error('useAuth must be used within an AuthProvider')
   }
   return ctx
 }
