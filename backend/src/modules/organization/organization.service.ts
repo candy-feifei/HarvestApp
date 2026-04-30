@@ -166,6 +166,30 @@ function serializeRate(
   };
 }
 
+/**
+ * 按 start 升序重链 endDate：每段 end 为下一段 start 的前一毫秒，最后一段为 null。
+ * 在新增/更新/删除后均调用，保证无重叠、无断层；update 里用 endDate=row.startDate 查“上一条”与真实存库不一致，必须靠此统一。
+ */
+async function reconcileMemberRateHistoryChain(
+  tx: Prisma.TransactionClient,
+  userOrganizationId: string,
+): Promise<void> {
+  const remaining = await tx.rateHistory.findMany({
+    where: { userOrganizationId },
+    orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
+  });
+  for (let i = 0; i < remaining.length; i += 1) {
+    const isLast = i === remaining.length - 1;
+    const endDate = isLast
+      ? null
+      : new Date(remaining[i + 1]!.startDate.getTime() - 1);
+    await tx.rateHistory.update({
+      where: { id: remaining[i]!.id },
+      data: { endDate },
+    });
+  }
+}
+
 @Injectable()
 export class OrganizationService {
   constructor(
@@ -884,16 +908,7 @@ export class OrganizationService {
           ? new Prisma.Decimal(dto.costRatePerHour)
           : current?.costRate ?? new Prisma.Decimal(0);
 
-      if (current) {
-        // 上一条的结束时间应为「新费率生效前一瞬间」，避免与下一段起点同一天造成重叠/歧义
-        const endExclusive = new Date(start.getTime() - 1);
-        await tx.rateHistory.update({
-          where: { id: current.id },
-          data: { endDate: endExclusive },
-        });
-      }
-
-      return tx.rateHistory.create({
+      const created = await tx.rateHistory.create({
         data: {
           userOrganizationId: memberId,
           billableRate: bill,
@@ -902,6 +917,9 @@ export class OrganizationService {
           endDate: null,
         },
       });
+      // 多段时会出现两条 endDate null，重链后仅保留最末段为开区间，与相邻段日对日衔接
+      await reconcileMemberRateHistoryChain(tx, memberId);
+      return created;
     });
 
     const all = await this.prisma.rateHistory.findMany({
@@ -972,26 +990,14 @@ export class OrganizationService {
         if (conflict) {
           throw new BadRequestException('该开始日期已存在另一条费率记录');
         }
-
-        const prev = await tx.rateHistory.findFirst({
-          where: {
-            userOrganizationId: memberId,
-            endDate: row.startDate,
-            NOT: { id: row.id },
-          },
-        });
-        if (prev) {
-          await tx.rateHistory.update({
-            where: { id: prev.id },
-            data: { endDate: newStart },
-          });
-        }
       }
 
-      return tx.rateHistory.update({
+      await tx.rateHistory.update({
         where: { id: row.id },
         data,
       });
+      await reconcileMemberRateHistoryChain(tx, memberId);
+      return tx.rateHistory.findFirstOrThrow({ where: { id: rateId } });
     });
 
     const all = await this.prisma.rateHistory.findMany({
@@ -1025,7 +1031,10 @@ export class OrganizationService {
     if (!row) {
       throw new BadRequestException('rate 不存在');
     }
-    await this.prisma.rateHistory.delete({ where: { id: row.id } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.rateHistory.delete({ where: { id: row.id } });
+      await reconcileMemberRateHistoryChain(tx, memberId);
+    });
     return { deleted: true as const };
   }
 

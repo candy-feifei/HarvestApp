@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Popover } from 'radix-ui'
 import { fetchOrganizationContext } from '@/features/clients/api'
 import {
   getTeamMember,
@@ -28,6 +29,7 @@ import { TeamMemberPermissionsPanel } from '@/features/team/components/team-memb
 import { TeamMemberSecurityPanel } from '@/features/team/components/team-member-security-panel'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { X } from 'lucide-react'
 import {
   fieldWrap,
   inputCls,
@@ -117,6 +119,7 @@ export function TeamMemberEditPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [removeAvatar, setRemoveAvatar] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
+  const [rolesMenuOpen, setRolesMenuOpen] = useState(false)
 
   const canEdit = useMemo(() => tab === 'basic', [tab])
 
@@ -147,7 +150,7 @@ export function TeamMemberEditPage() {
     ]
   }, [member?.timezone])
 
-  /** 组织里配置的角色名；若当前 jobLabel 不在列表中则保留一条以兼容历史数据 */
+  /** 组织里配置的角色名；若已保存的某段 jobLabel 不在列表中则保留以兼容历史数据 */
   const jobRoleSelectOptions = useMemo(() => {
     const items = teamRolesQ.data?.items ?? []
     const fromOrg = new Set(
@@ -155,12 +158,35 @@ export function TeamMemberEditPage() {
         .map((r) => r.name.trim())
         .filter((n) => n.length > 0),
     )
-    const current = jobLabel.trim()
-    if (current && !fromOrg.has(current)) {
-      fromOrg.add(current)
+    for (const t of jobLabel
+      .split(',')
+      .map((s) => s.trim())
+      .filter((n) => n.length > 0)) {
+      if (!fromOrg.has(t)) {
+        fromOrg.add(t)
+      }
     }
     return [...fromOrg].sort((a, b) => a.localeCompare(b))
   }, [teamRolesQ.data?.items, jobLabel])
+
+  const { selectedRolesOrdered, roleNamesToAdd } = useMemo(() => {
+    const picked = new Set(
+      jobLabel
+        .split(',')
+        .map((s) => s.trim())
+        .filter((n) => n.length > 0),
+    )
+    return {
+      selectedRolesOrdered: jobRoleSelectOptions.filter((n) => picked.has(n)),
+      roleNamesToAdd: jobRoleSelectOptions.filter((n) => !picked.has(n)),
+    }
+  }, [jobLabel, jobRoleSelectOptions])
+
+  useEffect(() => {
+    if (roleNamesToAdd.length === 0) {
+      setRolesMenuOpen(false)
+    }
+  }, [roleNamesToAdd.length])
 
   useEffect(() => {
     setIsDirty(false)
@@ -188,6 +214,22 @@ export function TeamMemberEditPage() {
     setAvatarFile(null)
     setRemoveAvatar(false)
   }, [member, isDirty, id])
+
+  function addJobRole(name: string) {
+    setIsDirty(true)
+    const parts = new Set(
+      jobLabel
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    )
+    parts.add(name)
+    setJobLabel(
+      jobRoleSelectOptions
+        .filter((n) => parts.has(n))
+        .join(', '),
+    )
+  }
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -805,52 +847,121 @@ export function TeamMemberEditPage() {
                 </div>
 
                 <div className={fieldWrap}>
-                  <span className={labelCls}>Roles</span>
-                  <div className="mt-1.5 max-w-full space-y-2 rounded-md border border-border bg-muted/10 p-2 sm:max-w-md">
+                  <span className={labelCls} id="member-roles-label">
+                    Roles
+                  </span>
+                  <div className="mt-1.5 max-w-full sm:max-w-md">
                     {teamRolesQ.isLoading ? (
                       <p className="text-sm text-muted-foreground">Loading roles…</p>
                     ) : jobRoleSelectOptions.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No custom roles yet.</p>
                     ) : (
-                      jobRoleSelectOptions.map((name) => {
-                        const picked = jobLabel
-                          .split(',')
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                          .includes(name)
-                        return (
-                          <label
-                            key={name}
-                            className="flex cursor-pointer items-center gap-2.5 text-sm"
+                      <Popover.Root
+                        open={rolesMenuOpen}
+                        onOpenChange={(next) => {
+                          if (next && roleNamesToAdd.length === 0) {
+                            return
+                          }
+                          setRolesMenuOpen(next)
+                        }}
+                      >
+                        <Popover.Trigger asChild>
+                          <div
+                            className={cn(
+                              'flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-md border border-foreground/30 bg-white px-2 py-1.5 outline-none',
+                              'transition-[box-shadow] focus-visible:ring-2 focus-visible:ring-ring/40',
+                              roleNamesToAdd.length > 0
+                                ? 'cursor-pointer'
+                                : 'cursor-default',
+                            )}
+                            role="combobox"
+                            aria-expanded={rolesMenuOpen}
+                            aria-controls="member-roles-listbox"
+                            aria-haspopup="listbox"
+                            aria-labelledby="member-roles-label"
                           >
-                            <input
-                              type="checkbox"
-                              className="size-4 rounded border-border text-primary"
-                              checked={picked}
-                              onChange={() => {
-                                setIsDirty(true)
-                                const parts = new Set(
-                                  jobLabel
-                                    .split(',')
-                                    .map((s) => s.trim())
-                                    .filter(Boolean),
-                                )
-                                if (parts.has(name)) {
-                                  parts.delete(name)
-                                } else {
-                                  parts.add(name)
-                                }
-                                setJobLabel(
-                                  jobRoleSelectOptions
-                                    .filter((n) => parts.has(n))
-                                    .join(', '),
-                                )
-                              }}
-                            />
-                            <span className="text-foreground">{name}</span>
-                          </label>
-                        )
-                      })
+                            {selectedRolesOrdered.map((name) => (
+                              <span
+                                key={name}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                className="inline-flex max-w-full items-center gap-0.5 rounded-full border border-border bg-white pl-2.5 pr-0.5 text-sm text-foreground"
+                              >
+                                <span className="truncate leading-none">
+                                  {name}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="inline-flex shrink-0 items-center justify-center rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    e.preventDefault()
+                                    setIsDirty(true)
+                                    const parts = new Set(
+                                      jobLabel
+                                        .split(',')
+                                        .map((s) => s.trim())
+                                        .filter(Boolean),
+                                    )
+                                    parts.delete(name)
+                                    setJobLabel(
+                                      jobRoleSelectOptions
+                                        .filter((n) => parts.has(n))
+                                        .join(', '),
+                                    )
+                                  }}
+                                  aria-label={`Remove ${name}`}
+                                >
+                                  <X
+                                    className="size-3.5"
+                                    strokeWidth={2.5}
+                                  />
+                                </button>
+                              </span>
+                            ))}
+                            {roleNamesToAdd.length > 0 ? (
+                              <span
+                                className="pointer-events-none min-w-0 select-none pl-0.5 text-sm text-muted-foreground"
+                                aria-hidden
+                              >
+                                {selectedRolesOrdered.length > 0
+                                  ? 'Click to add…'
+                                  : 'Add role…'}
+                              </span>
+                            ) : null}
+                          </div>
+                        </Popover.Trigger>
+                        {roleNamesToAdd.length > 0 ? (
+                          <Popover.Portal>
+                            <Popover.Content
+                              className="z-50 w-[var(--radix-popper-anchor-width,min(100%,24rem))] max-h-60 overflow-hidden rounded-md border border-foreground/20 bg-white p-1 text-sm text-foreground shadow-md outline-none"
+                              id="member-roles-listbox"
+                              role="listbox"
+                              side="bottom"
+                              sideOffset={4}
+                              align="start"
+                              onOpenAutoFocus={(e) => e.preventDefault()}
+                            >
+                              <ul className="m-0 list-none p-0" role="presentation">
+                                {roleNamesToAdd.map((n) => (
+                                  <li key={n} role="presentation">
+                                    <button
+                                      type="button"
+                                      role="option"
+                                      className="w-full cursor-pointer rounded-sm px-2.5 py-1.5 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none"
+                                      onClick={() => {
+                                        addJobRole(n)
+                                      }}
+                                    >
+                                      {n}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </Popover.Content>
+                          </Popover.Portal>
+                        ) : null}
+                      </Popover.Root>
                     )}
                   </div>
                   {teamRolesQ.isError ? (
@@ -1068,6 +1179,18 @@ function RatesTable({
     return `${m}/${d}/${y}`
   }
 
+  /**
+   * 自下而上按时间从旧到新：最下一行为最早段（如 All prior），最上行为最新/当前向未来的一段。
+   * 排序为 start 降序，与接口约定一致。
+   */
+  const displayRows = useMemo(() => {
+    return [...rows].sort(
+      (a, b) =>
+        b.startDate.slice(0, 10).localeCompare(a.startDate.slice(0, 10)) ||
+        b.id.localeCompare(a.id),
+    )
+  }, [rows])
+
   if (loading) {
     return (
       <p className="mt-4 text-sm text-muted-foreground" aria-live="polite">
@@ -1120,7 +1243,7 @@ function RatesTable({
           No rates yet.
         </p>
       ) : (
-        rows.map((r) => {
+        displayRows.map((r) => {
           const editing = inlineEdit?.id === r.id
           const hourly =
             kind === 'billable' ? r.billableRatePerHour : r.costRatePerHour
