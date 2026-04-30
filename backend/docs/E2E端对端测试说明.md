@@ -19,7 +19,7 @@
 
 ## 2. 运行命令与环境
 
-| 命令 | 作用 |
+| 命令 | 作用 | 
 |------|------|
 | `cd backend` 后 `npm run test:e2e` | 仅执行 E2E。使用 **`test/jest-e2e.json`**，**不会** 使用主 Jest 配置中面向 `src/**/*.spec.ts` 的那套。 |
 

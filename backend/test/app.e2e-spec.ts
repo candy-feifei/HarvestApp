@@ -185,6 +185,188 @@ describe('HarvestApp API (e2e)', () => {
     });
   });
 
+  describe('Organization', () => {
+    it('GET /api/organizations/context 返回当前成员与组织', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/organizations/context')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      expect(res.body).toMatchObject({
+        organizationId: expect.any(String),
+        memberId: expect.any(String),
+        organization: { defaultCurrency: 'USD' },
+      });
+    });
+
+    it('GET /api/organizations/members 返回成员列表', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/organizations/members')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as { items: { email: string }[] };
+      expect(Array.isArray(body.items)).toBe(true);
+      expect(body.items.length).toBeGreaterThan(0);
+      expect(body.items[0]).toMatchObject({ email: 'demo@harvest.app' });
+    });
+
+    it('GET /api/organizations/roles 返回角色列表', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/organizations/roles')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as { items: { id: string; name: string }[] };
+      expect(body.items.some((r) => r.id === 'role-e2e-1')).toBe(true);
+    });
+  });
+
+  describe('Clients', () => {
+    it('GET /api/clients 返回 items', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/clients')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as { items: { id: string; name: string }[] };
+      expect(body.items.some((c) => c.id === 'client-e2e-1')).toBe(true);
+    });
+  });
+
+  describe('Time entries', () => {
+    it('GET /api/time-entries/assignable-rows 返回 rows', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/time-entries/assignable-rows')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as { rows: { projectTaskId: string }[] };
+      expect(body.rows.length).toBeGreaterThan(0);
+      expect(body.rows[0]).toMatchObject({ projectTaskId: 'pt-e2e-1' });
+    });
+
+    it('GET /api/time-entries/track-time-options 返回 projects', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/time-entries/track-time-options')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as { projects: { projectId: string; tasks: unknown[] }[] };
+      expect(body.projects.length).toBeGreaterThan(0);
+      expect(body.projects[0]?.tasks.length).toBeGreaterThan(0);
+    });
+
+    it('GET /api/time-entries?week= 返回 mode 与 items', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/time-entries')
+        .query({ week: '2026-04-06' })
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as { mode: string; items: unknown[] };
+      expect(body.mode).toBe('week');
+      expect(Array.isArray(body.items)).toBe(true);
+    });
+  });
+
+  describe('Expenses', () => {
+    it('GET /api/expenses/form-options 含 projects 与 categories', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/expenses/form-options')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as {
+        projects: { id: string }[];
+        categories: { id: string }[];
+        defaultCurrency: string;
+      };
+      expect(body.defaultCurrency).toBe('USD');
+      expect(body.projects.length).toBeGreaterThan(0);
+      expect(body.categories.some((c) => c.id === 'cat-e2e-1')).toBe(true);
+    });
+
+    it('GET /api/expenses 返回 items', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/expenses')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as { items: unknown[] };
+      expect(Array.isArray(body.items)).toBe(true);
+    });
+  });
+
+  describe('Reports', () => {
+    it('GET /api/reports/filters 返回筛选项', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/reports/filters')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as {
+        currency: string;
+        clients: unknown[];
+        projects: unknown[];
+        tasks: unknown[];
+      };
+      expect(body.currency).toBe('USD');
+      expect(Array.isArray(body.clients)).toBe(true);
+      expect(Array.isArray(body.projects)).toBe(true);
+      expect(Array.isArray(body.tasks)).toBe(true);
+    });
+  });
+
+  describe('Approvals', () => {
+    it('GET /api/approvals/meta 返回枚举配置', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/approvals/meta')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      expect(res.body).toMatchObject({
+        groupBy: expect.arrayContaining(['PERSON', 'PROJECT', 'CLIENT']),
+        entryStatus: expect.arrayContaining(['SUBMITTED', 'APPROVED']),
+      });
+    });
+
+    it('GET /api/approvals/filters 返回 clients 与 teammates', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/approvals/filters')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as { clients: unknown[]; teammates: { email: string }[] };
+      expect(Array.isArray(body.clients)).toBe(true);
+      expect(body.teammates.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Settings & access', () => {
+    it('GET /api/settings 占位 JSON', async () => {
+      const access_token = await getAccessToken();
+      await request(app.getHttpServer())
+        .get('/api/settings')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200)
+        .expect((r) => {
+          expect(r.body).toMatchObject({ module: 'settings' });
+        });
+    });
+
+    it('GET /api/roles 占位列表', async () => {
+      const access_token = await getAccessToken();
+      await request(app.getHttpServer())
+        .get('/api/roles')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200)
+        .expect((r) => {
+          expect(r.body).toMatchObject({ module: 'access', items: [] });
+        });
+    });
+  });
+
   afterEach(async () => {
     await app.close();
   });

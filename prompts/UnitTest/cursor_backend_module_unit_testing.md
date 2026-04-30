@@ -1,5 +1,5 @@
 # Backend module unit testing
-_Exported on 2026/4/30 at GMT+8 22:50:07 from Cursor (3.1.14)_
+_Exported on 2026/5/1 at GMT+8 0:22:30 from Cursor (3.1.14)_
 
 ---
 
@@ -167,5 +167,65 @@ npm test
 cd F:/AI/code/HarvestApp/frontend
 npm run test:run
 npm run test:coverage
+```
+
+---
+
+**User**
+
+@backend后端代码的 e2e 测试目前也只有 tasks 模块的，也需要参考上面的后端单元测试，生成其他模块的 e2e 测试，覆盖每个模块的基本功能，并生成一个新的 E2E端对端测试报告
+
+---
+
+**Cursor**
+
+分析后端 e2e 现有结构与各模块路由，以便扩展 e2e 并生成报告。
+
+
+
+正在扩展 `e2e-prisma-mock.ts`，并在 `app.e2e-spec.ts` 中新增各模块的基本 E2E 用例。
+
+
+
+正在创建 `backend/docs/E2E端对端测试报告.md`。
+
+
+
+## 已完成
+
+### 1. 扩展 `test/e2e-prisma-mock.ts`
+为各模块在 **不连库** 前提下补全/区分 Prisma 行为，主要包括：
+- **`client.findMany`**：返回示例客户 `client-e2e-1`（供 Clients、Reports、Approvals filters 等）
+- **`project.findMany`**：按 `orderBy` / `include` 分支——**分页列表**（`updatedAt` + 客户 `invoiceDueMode`）仍返回 `[]`，保持原有 **`GET /api/projects`** 断言；**track-time-options**、**expenses / reports / approvals** 等场景返回带 `client`、`projectTasks` 或 `assignments` 的占位项目
+- **`projectTask.findMany`**：可填报行
+- **`userOrganization.findMany`**：成员列表、报表/审批筛选项
+- **`timeEntry` / `approval`**：`list` 周视图与审批窗口查询
+- **`expense.findMany`、expenseCategory、role** 等
+
+### 2. 扩展 `test/app.e2e-spec.ts`
+在保留原有健康、登录、Projects、**Tasks** 全套用例的基础上，新增 **14** 条用例，覆盖：
+- **Organization**：`context`、`members`、`roles`
+- **Clients**：`GET /api/clients`
+- **Time entries**：`assignable-rows`、`track-time-options`、`GET /api/time-entries?week=…`
+- **Expenses**：`form-options`、`GET /api/expenses`
+- **Reports**：`GET /api/reports/filters`
+- **Approvals**：`meta`、`filters`（管理员身份满足 `requireApprover`）
+- **Settings**：`GET /api/settings`
+- **Access**：`GET /api/roles`
+
+当前 **`npm run test:e2e`**：**21** 条用例全部通过。
+
+### 3. 新建报告文档
+- **`backend/docs/E2E端对端测试报告.md`**：含技术栈与命令、目录与装配、Mock 要点、登录约定、执行摘要、**按模块的用例表**、未覆盖项说明、相关文件索引。  
+- **未修改** `E2E端对端测试说明.md`（通用说明仍以该文件为准；具体用例列表以新报告为准）。
+
+### 4. 有意未纳入的「基本」边界
+- **`GET /api/projects/:id`**、工时报表 **`/reports/time`**、费用 **`multipart` uploads** 等依赖更重 mock 或二进制上传，放在报告第 7 节「可后续扩展」中说明。
+
+本地验证：
+
+```bash
+cd F:/AI/code/HarvestApp/backend
+npm run test:e2e
 ```
 

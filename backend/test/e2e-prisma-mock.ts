@@ -121,6 +121,38 @@ export function createE2ePrismaMock() {
             return Promise.resolve(e2eMembershipRow);
           },
         ),
+      findMany: jest.fn().mockImplementation(
+        (args: { where?: { organizationId?: string; status?: string } }) => {
+          const w = args?.where;
+          if (
+            w?.organizationId === E2E_ORG_ID
+            && w?.status === 'ACTIVE'
+          ) {
+            return Promise.resolve([
+              {
+                id: 'uorg-e2e-1',
+                userId: E2E_USER_ID,
+                organizationId: E2E_ORG_ID,
+                systemRole: 'ADMINISTRATOR',
+                weeklyCapacity: 40,
+                employeeId: 'e1',
+                employmentType: 'EMPLOYEE' as const,
+                jobLabel: null,
+                isPinned: false,
+                user: {
+                  id: E2E_USER_ID,
+                  firstName: 'Demo',
+                  lastName: 'User',
+                  email: 'demo@harvest.app',
+                  invitationStatus: 'ACTIVE',
+                },
+                rateHistories: [],
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      ),
       create: jest
         .fn()
         .mockImplementation(() => Promise.resolve(e2eMembershipRow)),
@@ -128,11 +160,98 @@ export function createE2ePrismaMock() {
     organization: {
       create: jest.fn().mockResolvedValue({ id: E2E_ORG_ID, name: 'x' }),
     },
+    client: {
+      findMany: jest.fn().mockImplementation(
+        (args: { where?: { organizationId?: string } }) => {
+          if (args?.where?.organizationId === E2E_ORG_ID) {
+            return Promise.resolve([
+              {
+                id: 'client-e2e-1',
+                name: 'Acme',
+                _count: { contacts: 0 },
+                contacts: [],
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      ),
+    },
     project: {
-      findMany: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn().mockImplementation((args: Record<string, unknown>) => {
+        const w = args?.where as
+          | { organizationId?: string; isArchived?: boolean }
+          | undefined;
+        const orderBy = args?.orderBy as Record<string, unknown> | Record<string, unknown>[] | undefined;
+        const include = args?.include as Record<string, unknown> | undefined;
+        const obSingle = !Array.isArray(orderBy) ? orderBy : null;
+        if (
+          obSingle
+          && 'updatedAt' in obSingle
+          && include
+          && typeof include.client === 'object'
+        ) {
+          const cs = (include.client as { select?: Record<string, unknown> }).select;
+          if (cs && 'invoiceDueMode' in cs) {
+            return Promise.resolve([]);
+          }
+        }
+        if (Array.isArray(orderBy) && include && 'projectTasks' in include) {
+          return Promise.resolve([
+            {
+              id: 'proj-e2e-1',
+              name: 'E2E Project',
+              clientId: 'client-e2e-1',
+              client: { id: 'client-e2e-1', name: 'Acme' },
+              projectTasks: [
+                {
+                  id: 'pt-e2e-1',
+                  taskId: 'task-other-1',
+                  task: { id: 'task-other-1', name: 'Other B' },
+                },
+              ],
+            },
+          ]);
+        }
+        if (w?.organizationId === E2E_ORG_ID && w?.isArchived === false) {
+          return Promise.resolve([
+            {
+              id: 'proj-e2e-1',
+              name: 'E2E Project',
+              billingMethod: 'TM',
+              isArchived: false,
+              clientId: 'client-e2e-1',
+              client: { id: 'client-e2e-1', name: 'Acme' },
+              assignments: [],
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }),
       count: jest.fn().mockResolvedValue(0),
     },
     projectTask: {
+      findMany: jest.fn().mockImplementation(
+        (args: { where?: { project?: { organizationId?: string } } }) => {
+          const orgId = args?.where?.project?.organizationId;
+          if (orgId === E2E_ORG_ID) {
+            return Promise.resolve([
+              {
+                id: 'pt-e2e-1',
+                projectId: 'proj-e2e-1',
+                taskId: 'task-other-1',
+                project: {
+                  id: 'proj-e2e-1',
+                  name: 'E2E Project',
+                  client: { id: 'client-e2e-1', name: 'Acme' },
+                },
+                task: { id: 'task-other-1', name: 'Other B' },
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      ),
       findFirst: jest
         .fn()
         .mockImplementation(
@@ -147,8 +266,33 @@ export function createE2ePrismaMock() {
       create: jest.fn().mockResolvedValue({ id: 'pt' }),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    timeEntry: {
+      findMany: jest.fn().mockResolvedValue([]),
+      aggregate: jest.fn().mockResolvedValue({ _max: { spentDate: null } }),
+    },
+    approval: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    expenseCategory: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'cat-e2e-1',
+          name: 'Travel',
+          unitName: 'trip',
+          unitPrice: null,
+          isArchived: false,
+        },
+      ]),
+    },
     expense: {
+      findMany: jest.fn().mockResolvedValue([]),
       groupBy: jest.fn().mockResolvedValue([]),
+      aggregate: jest.fn().mockResolvedValue({ _sum: { amount: null } }),
+    },
+    role: {
+      findMany: jest.fn().mockResolvedValue([
+        { id: 'role-e2e-1', name: 'Custom Role', members: [] },
+      ]),
     },
     task: {
       findMany: jest.fn().mockImplementation((args: { where: Prisma.TaskWhereInput }) => {
