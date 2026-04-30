@@ -1,5 +1,5 @@
 # Unit testing technologies for backend and frontend
-_Exported on 2026/4/28 at GMT+8 9:41:10 from Cursor (3.1.14)_
+_Exported on 2026/4/29 at GMT+8 14:30:57 from Cursor (3.1.14)_
 
 ---
 
@@ -222,4 +222,41 @@ e2e 里用 `overrideProvider(PrismaService).useValue(prismaMock)` 换掉了真 `
 | 你这次失败 | **预期内的技术原因**：mock 与现版 `OrganizationContextService` 不同步。 |
 
 **按你的要求先不改代码**：从现状看，文档里写 `npm run test:e2e` 会跑 e2e **没错**，但应把预期说清楚——**在补齐 mock 或改为连测试库之前，这条用例不保证通过**。若你之后要修，方向就是在 e2e 的 `prismaMock` 里补 `userOrganization`（以及 `ensureDefaultMembership` / `ProjectsService` 等路径可能再需要的模型），或改成真实/嵌入式数据库跑集成测试。
+
+---
+
+**User**
+
+@单元测试说明.md @单元测试说明.md 根据目前的前后端单元测试，是否有相关插件，可以实现每次执行完测试命令，直接生成可视化的测试报告
+
+---
+
+**Cursor**
+
+说明可选方案，并在两份《单元测试说明》中补充“可视化报告”小节。
+
+
+
+正在将“可视化报告”的说明加入两份《单元测试说明》。说明：Jest/Vitest 的**覆盖率报告**最成熟；**用例通过/失败**的独立 HTML 需额外 reporter 包。
+
+
+
+## 结论概览
+
+**有。大致分三类：**
+
+| 目标 | 后端 (Jest) | 前端 (Vitest) |
+|------|-------------|----------------|
+| **行/分支覆盖率（浏览器里看的 HTML 报告）** | 已有 `npm run test:cov` → 生成 **`coverage/lcov-report/index.html`**，**不用装额外插件** | 需加 **`@vitest/coverage-v8`** 等，并在 `vite.config` 里开 `test.coverage`，再 `vitest run --coverage` → 一般为 **`coverage/index.html`**（以配置为准） |
+| **测试结束后在浏览器里点着看（树、时间线等）** | 无与 Vitest UI 对等的官方面板；可依赖覆盖率 HTML 或接第三方 | 安装 **`@vitest/ui`**，执行 **`npx vitest --ui`** |
+| **「用例名 + 通过/失败」的独立 HTML 汇总** | 默认**没有**；可装 **jest-html-reporter** 等，并在 Jest 里配 `reporters` | 可看 Vitest 的 **`reporters`**（如官方支持的 `html`）或接 CI/其它展示工具 |
+
+**说明：**  
+- 「每次跑完**自动在浏览器里打开**报告」不是 Jest/Vitest 默认行为，一般是再加一层脚本（例如用 `open-cli` 或系统 `start` / `open` 打开生成的 `index.html`），或在 CI 里把 `coverage` 当产物上传。  
+- 你们后端 **`test:cov` 已经能出可视化覆盖率**；前端若还没接 coverage，需要先按 Vitest 文档加 provider 和配置，才有 HTML 覆盖率报告。
+
+已在以下文档中增加 **「可视化测试报告」** 小节，并与现有章节编号衔接好：
+
+- `backend/docs/单元测试说明.md` → **§6**（§7 为相关文件索引）  
+- `frontend/docs/单元测试说明.md` → **§6**（原 §6、§7 顺延为 **§7、§8**）
 
