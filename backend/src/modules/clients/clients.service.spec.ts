@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { InvoiceDueMode } from '@prisma/client'
 import { PrismaService } from '../../prisma/prisma.service'
 import type { ActiveMembership } from '../organization/organization-context.service'
@@ -45,6 +45,29 @@ describe('ClientsService', () => {
         orderBy: { name: 'asc' },
       }),
     )
+  })
+
+  it('list: 有搜索词时构造 OR（名称与联系人字段）', async () => {
+    const { prisma, client } = makePrismaMock()
+    client.findMany.mockResolvedValue([])
+    const service = new ClientsService(prisma)
+    await service.list(membership, '  acme  ')
+    expect(client.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.any(Array),
+        }),
+      }),
+    )
+  })
+
+  it('getContact: 未找到时抛 NotFoundException', async () => {
+    const { prisma, clientContact } = makePrismaMock()
+    clientContact.findFirst.mockResolvedValue(null)
+    const service = new ClientsService(prisma)
+    await expect(
+      service.getContact(membership, 'c1', 'contact-1'),
+    ).rejects.toBeInstanceOf(NotFoundException)
   })
 
   it('create: NET_DAYS 但未填 invoiceNetDays 时抛 BadRequestException', async () => {

@@ -5,7 +5,15 @@
  *   `vi.mock(..., importOriginal)` 只替换 `listTasks` 等，保留其余真实导出；需要全链路时再用 MSW。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { listTasks } from './api'
+import {
+  archiveTask,
+  batchArchiveTasks,
+  createTask,
+  deleteTask,
+  fetchTask,
+  listTasks,
+  updateTask,
+} from './api'
 
 const apiRequest = vi.hoisted(() => vi.fn())
 
@@ -38,5 +46,80 @@ describe('tasks api', () => {
     apiRequest.mockResolvedValue({ common: [], other: [] })
     await listTasks('  hello  ')
     expect(apiRequest).toHaveBeenCalledWith('/tasks?q=hello', { method: 'GET' })
+  })
+
+  it('fetchTask: GET /tasks/:id', async () => {
+    apiRequest.mockResolvedValue({
+      id: 't1',
+      name: 'T',
+      isCommon: false,
+      isBillable: true,
+      defaultHourlyRate: null,
+    })
+    await fetchTask('t1')
+    expect(apiRequest).toHaveBeenCalledWith('/tasks/t1', { method: 'GET' })
+  })
+
+  it('createTask: POST /tasks', async () => {
+    apiRequest.mockResolvedValue({
+      id: 't1',
+      name: 'N',
+      isCommon: false,
+      isBillable: true,
+      defaultHourlyRate: null,
+    })
+    await createTask({
+      name: 'N',
+      isCommon: false,
+      isBillable: true,
+      addToAllExistingProjects: true,
+    })
+    expect(apiRequest).toHaveBeenCalledWith('/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'N',
+        isCommon: false,
+        isBillable: true,
+        addToAllExistingProjects: true,
+      }),
+    })
+  })
+
+  it('updateTask: PATCH /tasks/:id', async () => {
+    apiRequest.mockResolvedValue({
+      id: 't1',
+      name: 'N2',
+      isCommon: true,
+      isBillable: false,
+      defaultHourlyRate: '10',
+    })
+    await updateTask('t1', { name: 'N2', isCommon: true })
+    expect(apiRequest).toHaveBeenCalledWith('/tasks/t1', {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'N2', isCommon: true }),
+    })
+  })
+
+  it('archiveTask: POST /tasks/:id/archive', async () => {
+    apiRequest.mockResolvedValue({ id: 't1', archived: true })
+    await archiveTask('t1')
+    expect(apiRequest).toHaveBeenCalledWith('/tasks/t1/archive', {
+      method: 'POST',
+    })
+  })
+
+  it('batchArchiveTasks: POST /tasks/batch/archive', async () => {
+    apiRequest.mockResolvedValue({ updated: 2 })
+    await batchArchiveTasks(['a', 'b'])
+    expect(apiRequest).toHaveBeenCalledWith('/tasks/batch/archive', {
+      method: 'POST',
+      body: JSON.stringify({ ids: ['a', 'b'] }),
+    })
+  })
+
+  it('deleteTask: DELETE /tasks/:id', async () => {
+    apiRequest.mockResolvedValue({ id: 't1', deleted: true })
+    await deleteTask('t1')
+    expect(apiRequest).toHaveBeenCalledWith('/tasks/t1', { method: 'DELETE' })
   })
 })
