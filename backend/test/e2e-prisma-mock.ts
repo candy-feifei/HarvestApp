@@ -64,7 +64,11 @@ export function createE2ePrismaMock() {
     onModuleDestroy: async () => {},
     $connect: jest.fn().mockResolvedValue(undefined),
     $disconnect: jest.fn().mockResolvedValue(undefined),
-    $queryRaw: jest.fn().mockResolvedValue([1]),
+    $queryRaw: jest
+      .fn()
+      .mockResolvedValue([
+        { spent: new Prisma.Decimal(0), costs: new Prisma.Decimal(0) },
+      ]),
     $transaction: jest.fn().mockImplementation((arg: unknown) => {
       if (Array.isArray(arg)) {
         return Promise.all(arg);
@@ -176,10 +180,181 @@ export function createE2ePrismaMock() {
           return Promise.resolve([]);
         },
       ),
+      findFirst: jest
+        .fn()
+        .mockImplementation((args: Record<string, unknown>) => {
+          const w = args.where as {
+            id?: string;
+            organizationId?: string;
+            isArchived?: boolean;
+          };
+          if (
+            w?.id === 'client-e2e-1'
+            && w?.organizationId === E2E_ORG_ID
+            && w?.isArchived === false
+          ) {
+            const inc = args.include as { projects?: unknown } | undefined;
+            if (inc?.projects) {
+              const now = new Date();
+              return Promise.resolve({
+                id: 'client-e2e-1',
+                name: 'Acme',
+                address: null,
+                organizationId: E2E_ORG_ID,
+                currency: 'USD',
+                taxRate: null,
+                secondaryTaxRate: null,
+                discountRate: null,
+                invoiceDueMode: 'UPON_RECEIPT' as const,
+                invoiceNetDays: null,
+                isArchived: false,
+                createdAt: now,
+                updatedAt: now,
+                projects: [{ id: 'proj-e2e-1', name: 'E2E Project' }],
+                _count: { projects: 1 },
+              });
+            }
+            const sel = args.select as Record<string, boolean> | undefined;
+            if (sel?.id === true) {
+              return Promise.resolve({ id: 'client-e2e-1' });
+            }
+          }
+          return Promise.resolve(null);
+        }),
+      create: jest
+        .fn()
+        .mockImplementation((args: { data: Record<string, unknown> }) => {
+          const now = new Date();
+          return Promise.resolve({
+            id: `client-new-${Date.now()}`,
+            name: args.data.name,
+            address: args.data.address ?? null,
+            organizationId: args.data.organizationId,
+            currency: args.data.currency ?? null,
+            taxRate: args.data.taxRate ?? null,
+            secondaryTaxRate: args.data.secondaryTaxRate ?? null,
+            discountRate: args.data.discountRate ?? null,
+            invoiceDueMode: args.data.invoiceDueMode,
+            invoiceNetDays: args.data.invoiceNetDays ?? null,
+            isArchived: false,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }),
+      update: jest
+        .fn()
+        .mockImplementation(
+          (args: { where: { id: string }; data: Record<string, unknown> }) => {
+            const now = new Date();
+            return Promise.resolve({
+              id: args.where.id,
+              name: args.data.name,
+              address: args.data.address ?? null,
+              organizationId: E2E_ORG_ID,
+              currency: args.data.currency ?? null,
+              taxRate: args.data.taxRate ?? null,
+              secondaryTaxRate: args.data.secondaryTaxRate ?? null,
+              discountRate: args.data.discountRate ?? null,
+              invoiceDueMode: args.data.invoiceDueMode,
+              invoiceNetDays: args.data.invoiceNetDays ?? null,
+              isArchived: false,
+              createdAt: now,
+              updatedAt: now,
+            });
+          },
+        ),
     },
     project: {
+      findFirst: jest
+        .fn()
+        .mockImplementation(
+          (args: { where: { id?: string; organizationId?: string } }) => {
+            const w = args?.where;
+            if (w?.id === 'proj-e2e-1' && w?.organizationId === E2E_ORG_ID) {
+              const now = new Date();
+              return Promise.resolve({
+                id: 'proj-e2e-1',
+                name: 'E2E Project',
+                code: null,
+                isBillable: true,
+                billingMethod: 'TM' as const,
+                hourlyRate: new Prisma.Decimal(100),
+                fixedFee: null,
+                budgetType: 'TOTAL_PROJECT_HOURS' as const,
+                budgetAmount: null,
+                notifyAt: null,
+                isArchived: false,
+                isPinned: false,
+                startsOn: null,
+                endsOn: null,
+                notes: null,
+                metadata: null,
+                invoiceDueMode: 'UPON_RECEIPT' as const,
+                invoiceNetDays: null,
+                invoicePoNumber: null,
+                invoiceTaxPercent: null,
+                invoiceSecondTaxEnabled: false,
+                invoiceSecondTaxPercent: null,
+                invoiceDiscountPercent: null,
+                createdAt: now,
+                updatedAt: now,
+                organizationId: E2E_ORG_ID,
+                clientId: 'client-e2e-1',
+                client: {
+                  id: 'client-e2e-1',
+                  name: 'Acme',
+                  invoiceDueMode: 'UPON_RECEIPT' as const,
+                  invoiceNetDays: null,
+                  taxRate: null,
+                  secondaryTaxRate: null,
+                  discountRate: null,
+                },
+                projectTasks: [
+                  {
+                    taskId: 'task-other-1',
+                    isBillable: true,
+                    hourlyRate: new Prisma.Decimal(50),
+                    task: { name: 'Other B' },
+                  },
+                ],
+                assignments: [
+                  {
+                    userId: E2E_USER_ID,
+                    isManager: true,
+                    projectBillableRate: new Prisma.Decimal(80),
+                    user: {
+                      firstName: 'Demo',
+                      lastName: 'User',
+                      email: 'demo@harvest.app',
+                    },
+                  },
+                ],
+              });
+            }
+            return Promise.resolve(null);
+          },
+        ),
       findMany: jest.fn().mockImplementation((args: Record<string, unknown>) => {
         const w = args?.where as
+          | {
+              AND?: Array<{ organizationId?: string }>;
+              organizationId?: string;
+              isArchived?: boolean;
+            }
+          | undefined;
+        if (w?.AND && Array.isArray(w.AND)) {
+          const hasOrg = w.AND.some(
+            (clause) =>
+              clause
+              && typeof clause === 'object'
+              && clause.organizationId === E2E_ORG_ID,
+          );
+          const sel = args?.select as Record<string, boolean> | undefined;
+          if (hasOrg && sel?.id === true) {
+            return Promise.resolve([{ id: 'proj-e2e-1' }]);
+          }
+        }
+        const wFlat = args?.where as
           | { organizationId?: string; isArchived?: boolean }
           | undefined;
         const orderBy = args?.orderBy as Record<string, unknown> | Record<string, unknown>[] | undefined;
@@ -213,7 +388,7 @@ export function createE2ePrismaMock() {
             },
           ]);
         }
-        if (w?.organizationId === E2E_ORG_ID && w?.isArchived === false) {
+        if (wFlat?.organizationId === E2E_ORG_ID && wFlat?.isArchived === false) {
           return Promise.resolve([
             {
               id: 'proj-e2e-1',

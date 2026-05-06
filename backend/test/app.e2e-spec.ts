@@ -50,6 +50,13 @@ describe('HarvestApp API (e2e)', () => {
       });
   });
 
+  it('POST /api/auth/login 密码错误时 401', () => {
+    return request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: 'demo@harvest.app', password: 'wrong-password' })
+      .expect(401);
+  });
+
   it('登录后可用 JWT 访问 /api/projects', async () => {
     const access_token = await getAccessToken();
     expect(access_token).toBeDefined();
@@ -70,6 +77,25 @@ describe('HarvestApp API (e2e)', () => {
           total: 0,
         });
       });
+  });
+
+  it('GET /api/projects/:id 返回项目详情（含 client、tasks、team）', async () => {
+    const access_token = await getAccessToken();
+    const res = await request(app.getHttpServer())
+      .get('/api/projects/proj-e2e-1')
+      .set('Authorization', `Bearer ${access_token}`)
+      .expect(200);
+    const body = res.body as {
+      id: string;
+      name: string;
+      clientId: string;
+      tasks: { taskId: string; name: string }[];
+      team: { userId: string }[];
+    };
+    expect(body.id).toBe('proj-e2e-1');
+    expect(body.clientId).toBe('client-e2e-1');
+    expect(body.tasks.some((t) => t.taskId === 'task-other-1')).toBe(true);
+    expect(body.team.some((m) => m.userId === 'user-e2e-1')).toBe(true);
   });
 
   describe('Tasks', () => {
@@ -232,6 +258,53 @@ describe('HarvestApp API (e2e)', () => {
       const body = res.body as { items: { id: string; name: string }[] };
       expect(body.items.some((c) => c.id === 'client-e2e-1')).toBe(true);
     });
+
+    it('POST /api/clients 创建客户', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .post('/api/clients')
+        .set('Authorization', `Bearer ${access_token}`)
+        .send({
+          name: 'E2E New Client',
+          currency: 'USD',
+          invoiceDueMode: 'UPON_RECEIPT',
+        })
+        .expect(201);
+      const body = res.body as { id: string; name: string; resolvedCurrency: string };
+      expect(body.name).toBe('E2E New Client');
+      expect(body.resolvedCurrency).toBe('USD');
+      expect(body.id).toMatch(/^client-new-/);
+    });
+
+    it('GET /api/clients/:id 返回详情与 activeProjects', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/clients/client-e2e-1')
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as {
+        id: string;
+        projectCount: number;
+        activeProjects: { id: string }[];
+      };
+      expect(body.id).toBe('client-e2e-1');
+      expect(body.projectCount).toBeGreaterThanOrEqual(1);
+      expect(body.activeProjects.some((p) => p.id === 'proj-e2e-1')).toBe(true);
+    });
+
+    it('PATCH /api/clients/:id 更新客户名称', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .patch('/api/clients/client-e2e-1')
+        .set('Authorization', `Bearer ${access_token}`)
+        .send({
+          name: 'Acme Renamed',
+          currency: 'USD',
+          invoiceDueMode: 'UPON_RECEIPT',
+        })
+        .expect(200);
+      expect((res.body as { name: string }).name).toBe('Acme Renamed');
+    });
   });
 
   describe('Time entries', () => {
@@ -316,6 +389,50 @@ describe('HarvestApp API (e2e)', () => {
       expect(Array.isArray(body.projects)).toBe(true);
       expect(Array.isArray(body.tasks)).toBe(true);
     });
+
+    it('GET /api/reports/time 返回 summary 与 rows（无数据时为空表）', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/reports/time')
+        .query({
+          fromYmd: '2026-04-01',
+          toYmd: '2026-04-30',
+          groupBy: 'clients',
+        })
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as {
+        groupBy: string;
+        summary: { totalHours: number };
+        rows: unknown[];
+      };
+      expect(body.groupBy).toBe('clients');
+      expect(body.summary.totalHours).toBe(0);
+      expect(Array.isArray(body.rows)).toBe(true);
+    });
+
+    it('GET /api/reports/profitability 返回 series 与 summary', async () => {
+      const access_token = await getAccessToken();
+      const res = await request(app.getHttpServer())
+        .get('/api/reports/profitability')
+        .query({
+          fromYmd: '2026-04-01',
+          toYmd: '2026-04-30',
+          groupBy: 'clients',
+        })
+        .set('Authorization', `Bearer ${access_token}`)
+        .expect(200);
+      const body = res.body as {
+        groupBy: string;
+        series: { month: string; revenue: number; costs: number }[];
+        summary: { revenue: { total: number }; costs: { total: number } };
+      };
+      expect(body.groupBy).toBe('clients');
+      expect(Array.isArray(body.series)).toBe(true);
+      expect(body.series.length).toBeGreaterThan(0);
+      expect(body.summary.revenue.total).toBe(0);
+      expect(body.summary.costs.total).toBe(0);
+    });
   });
 
   describe('Approvals', () => {
@@ -340,6 +457,23 @@ describe('HarvestApp API (e2e)', () => {
       const body = res.body as { clients: unknown[]; teammates: { email: string }[] };
       expect(Array.isArray(body.clients)).toBe(true);
       expect(body.teammates.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Account', () => {
+    it('POST /api/account/change-password 修改密码成功', async () => {
+      const access_token = await getAccessToken();
+      await request(app.getHttpServer())
+        .post('/api/account/change-password')
+        .set('Authorization', `Bearer ${access_token}`)
+        .send({
+          currentPassword: 'demo123',
+          newPassword: 'NewDemoPass9',
+        })
+        .expect(200)
+        .expect((r) => {
+          expect((r.body as { changed: boolean }).changed).toBe(true);
+        });
     });
   });
 
