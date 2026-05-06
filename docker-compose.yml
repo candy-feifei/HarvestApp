@@ -11,6 +11,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: harvestapp
+    # 供本机开发 / E2E（主机上的 Prisma / Nest）直连
+    ports:
+      - "5432:5432"
     volumes:
       - harvestapp_pgdata:/var/lib/postgresql/data
     healthcheck:

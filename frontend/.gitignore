@@ -9,6 +9,12 @@ lerna-debug.log*
 
 node_modules
 coverage
+
+# Playwright / E2E 产物（勿提交）
+/test-results/
+/playwright-report/
+playwright/.cache/
+
 dist
 dist-ssr
 *.local

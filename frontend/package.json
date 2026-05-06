@@ -12,7 +12,19 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:coverage:tasks": "vitest run --coverage --coverage.include=src/features/tasks/** src/features/tasks",
-    "test:tasks": "vitest run src/features/tasks"
+    "test:tasks": "vitest run src/features/tasks",
+    "test:e2e": "node ./scripts/e2e-run.mjs",
+    "test:e2e:only": "node ./scripts/e2e-run.mjs --playwright-file e2e/app-journey.spec.ts",
+    "test:e2e:journey": "node ./scripts/e2e-run.mjs --playwright-file e2e/app-journey.spec.ts",
+    "test:e2e:journey:fast": "node ./scripts/e2e-skip-prisma-generate.mjs --playwright-file e2e/app-journey.spec.ts",
+    "test:e2e:ui": "node ./scripts/e2e-run.mjs --ui --playwright-file e2e/app-journey.spec.ts",
+    "test:e2e:ui:fast": "node ./scripts/e2e-skip-prisma-generate.mjs --ui --playwright-file e2e/app-journey.spec.ts",
+    "test:e2e:journey:record": "node ./scripts/e2e-run.mjs --record --playwright-file e2e/app-journey.spec.ts",
+    "test:e2e:ui:record": "node ./scripts/e2e-run.mjs --record --ui --playwright-file e2e/app-journey.spec.ts",
+    "test:e2e:journey:record:fast": "node ./scripts/e2e-skip-prisma-generate.mjs --record --playwright-file e2e/app-journey.spec.ts",
+    "test:e2e:ui:record:fast": "node ./scripts/e2e-skip-prisma-generate.mjs --record --ui --playwright-file e2e/app-journey.spec.ts",
+    "test:e2e:report:open": "node ./scripts/open-e2e-report.mjs",
+    "e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
@@ -50,6 +62,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^6.3.0",
-    "vitest": "^3.2.0"
+    "vitest": "^3.2.0",
+    "@playwright/test": "^1.56.0"
   }
 }
