@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prompt standardizer</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+  </head>
+  <body>
+    <div id="global-loading" class="global-loading" style="display: none">
+      <div class="spinner" aria-label="Loading"></div>
+      <div id="global-loading-text" class="global-loading-text">Working…</div>
+    </div>
+    <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+    <button type="button" class="floating-settings" id="btn-open-settings" aria-label="Open settings">
+      Settings
+    </button>
+    <button type="button" class="floating-refresh secondary" id="btn-refresh" aria-label="Refresh data">
+      Refresh
+    </button>
+
+    <div class="layout layout-chat">
+      <aside class="panel chat-left">
+        <div class="row" style="justify-content: space-between; align-items: center">
+          <h2 style="margin: 0">AI sessions</h2>
+          <button type="button" class="secondary" id="btn-ai-new">New</button>
+        </div>
+        <div id="ai-session-list" class="list list-scroll" style="max-height: calc(100vh - 140px)"></div>
+      </aside>
+
+      <main class="panel chat-center">
+        <div id="ai-chat-log" class="chat-stream-area"></div>
+        <div class="chat-input-bar">
+          <textarea class="code" id="ai-input" placeholder="Your message"></textarea>
+          <div class="row chat-actions">
+            <button type="button" id="btn-ai-send">Send</button>
+            <button type="button" class="danger secondary" id="btn-ai-del-session">Delete session</button>
+          </div>
+        </div>
+      </main>
+
+      <aside class="panel chat-rail chat-rail-options" aria-label="Chat options">
+        <h2 style="margin: 0 0 0.75rem">Chat options</h2>
+        <select class="field" id="ai-provider">
+          <option value="deepseek">deepseek</option>
+          <option value="qwen">qwen</option>
+          <option value="yuanbao">yuanbao</option>
+        </select>
+        <select class="field" id="ai-template">
+          <option value="">(no agent / template)</option>
+        </select>
+        <select class="field" id="ai-project">
+          <option value="">(no project link)</option>
+        </select>
+        <select class="field" id="ai-linked-md">
+          <option value="">(no linked Markdown document)</option>
+        </select>
+        <input class="field" id="ai-model-override" placeholder="Optional model override" />
+        <label class="check-row">
+          <input type="checkbox" id="ai-use-stream" checked />
+          <span>Streaming response (typewriter effect)</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="ai-doc-update-mode" />
+          <span>Ask before saving Markdown versions</span>
+        </label>
+      </aside>
+
+      <aside class="panel chat-rail chat-rail-inspector" aria-label="Request inspector">
+        <h2 style="margin: 0 0 0.35rem">Request inspector</h2>
+        <p class="hint" style="margin-top: 0; margin-bottom: 0.65rem">
+          JSON body sent to the provider (no secrets).
+        </p>
+        <pre class="preview-box inspector-pre" id="ai-request-preview"></pre>
+      </aside>
+    </div>
+
+    <div id="settings-drawer" class="drawer-backdrop" style="display: none">
+      <div class="drawer">
+        <div class="row" style="justify-content: space-between; align-items: center">
+          <h2 style="margin: 0">Settings</h2>
+          <button type="button" class="secondary" id="btn-close-settings">Close</button>
+        </div>
+        <nav class="tabs tabs-sub" id="settings-tabs">
+          <button type="button" class="tab active" data-settings-tab="templates">Agents</button>
+          <button type="button" class="tab" data-settings-tab="roles">Persons</button>
+          <button type="button" class="tab" data-settings-tab="projects">Projects</button>
+        </nav>
+
+        <section id="settings-templates" class="settings-panel active">
+        <div class="layout-prompt-2col">
+          <div class="prompt-left">
+            <aside class="panel panel-nested">
+              <h2>Agents (prompt templates)</h2>
+              <div class="row">
+                <button type="button" id="btn-new-template">New template</button>
+              </div>
+              <div id="template-list" class="list list-scroll"></div>
+            </aside>
+            <main class="panel panel-nested panel-grow">
+              <h2>Edit &amp; metrics</h2>
+              <div id="no-template" class="error">Pick a template from the list or create one.</div>
+              <div id="editor" style="display: none">
+                <input class="field" id="tpl-name" placeholder="Template name" />
+                <input class="field" id="tpl-desc" placeholder="Description (optional)" />
+                <textarea class="code" id="tpl-body" placeholder="Body; use {{name}} for placeholders"></textarea>
+                <div class="metrics" id="tpl-metrics"></div>
+                <div class="row">
+                  <button type="button" id="btn-save-template">Save template</button>
+                  <button type="button" class="danger secondary" id="btn-delete-template">Delete</button>
+                </div>
+                <h2>Placeholder preview</h2>
+                <div id="var-inputs"></div>
+                <div class="row">
+                  <button type="button" class="secondary" id="btn-preview">Update preview</button>
+                </div>
+                <div class="preview-box" id="render-preview"></div>
+                <h2>Sessions</h2>
+                <div class="row">
+                  <button type="button" id="btn-new-session">New session from current template</button>
+                </div>
+              </div>
+            </main>
+          </div>
+          <aside class="panel prompt-right">
+            <h2>Session history</h2>
+            <div id="session-list" class="list list-scroll"></div>
+            <div id="session-detail" style="display: none; margin-top: 1rem">
+              <h2>Messages</h2>
+              <div id="messages"></div>
+              <h2>Add message</h2>
+              <select class="field" id="msg-role">
+                <option value="system">system</option>
+                <option value="user" selected>user</option>
+                <option value="assistant">assistant</option>
+              </select>
+              <textarea class="code" id="msg-content" style="min-height: 100px" placeholder="Message body"></textarea>
+              <div class="row">
+                <button type="button" id="btn-add-msg">Append</button>
+              </div>
+              <h2>Feedback</h2>
+              <div id="feedbacks"></div>
+              <label class="pill">Rating 1-5</label>
+              <input class="field" type="number" id="fb-rating" min="1" max="5" placeholder="optional" />
+              <textarea class="code" id="fb-comment" style="min-height: 72px" placeholder="Feedback notes"></textarea>
+              <div class="row">
+                <button type="button" id="btn-add-feedback">Submit feedback</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="settings-roles" class="settings-panel">
+        <div class="layout layout-roles">
+          <aside class="panel">
+            <h2>Persons</h2>
+            <div class="row">
+              <button type="button" id="btn-rc-new">New person</button>
+            </div>
+            <div id="role-list" class="list"></div>
+          </aside>
+          <main class="panel">
+            <h2>Matching engine</h2>
+            <label class="check-row">
+              <input type="checkbox" id="re-enabled" />
+              <span
+                >Enable formal allocation wording for goal-based and task-based matching (when off, scores are still
+                shown).</span
+              >
+            </label>
+            <label class="pill" style="display: block; margin-top: 0.75rem">Allocation principles (free text)</label>
+            <textarea class="code" id="re-principles" style="min-height: 100px"></textarea>
+            <label class="pill" style="display: block; margin-top: 0.75rem"
+              >Load penalty (per current-load unit, subtracted from skill match % in task matching)</label
+            >
+            <input class="field" id="re-load-penalty" type="number" min="0" max="50" step="0.5" value="3" />
+            <div class="row">
+              <button type="button" id="btn-re-save">Save engine settings</button>
+            </div>
+
+            <h2 style="margin-top: 1.25rem">Person editor</h2>
+            <div id="rc-empty" class="error">Select a person on the left or create one.</div>
+            <div id="rc-editor" style="display: none">
+              <input class="field" id="rc-name" placeholder="Name" />
+              <input class="field" id="rc-job" placeholder="Job title / 岗位" />
+              <input class="field" id="rc-team" placeholder="Team / 团队" />
+              <input class="field" id="rc-load" type="number" min="0" max="999" placeholder="Current load (e.g. active projects)" />
+              <textarea class="code" id="rc-notes" style="min-height: 72px" placeholder="Capability notes (optional)"></textarea>
+              <label class="pill">Skill tree (skill names must appear verbatim in the task text to match)</label>
+              <div id="skill-rows"></div>
+              <div class="row">
+                <button type="button" class="secondary" id="btn-skill-add">Add skill</button>
+              </div>
+              <div class="row">
+                <button type="button" id="btn-rc-save">Save person</button>
+                <button type="button" class="danger secondary" id="btn-rc-delete">Delete person</button>
+              </div>
+            </div>
+
+            <h2 style="margin-top: 1.25rem">Task goal evaluation (legacy: keywords in free text)</h2>
+            <textarea
+              class="code"
+              id="task-goal"
+              style="min-height: 100px"
+              placeholder="Describe the task; include skill keywords so they match person skill tags (substring)."
+            ></textarea>
+            <label class="check-row">
+              <input type="checkbox" id="task-persist" checked />
+              <span>Persist this evaluation to history</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" id="task-force" />
+              <span>For this run only, ignore the global toggle and generate allocation text as if enabled</span>
+            </label>
+            <div class="row">
+              <button type="button" id="btn-task-eval">Evaluate and suggest assignment</button>
+            </div>
+            <pre class="preview-box" id="task-summary" style="white-space: pre-wrap; display: none"></pre>
+            <div id="task-table-wrap" style="display: none; margin-top: 0.75rem"></div>
+          </main>
+          <aside class="panel">
+            <h2>Evaluation history</h2>
+            <div id="eval-list" class="list"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="settings-projects" class="settings-panel">
+        <div class="layout layout-projects">
+          <aside class="panel">
+            <h2>Projects</h2>
+            <div class="row">
+              <button type="button" id="btn-proj-new">New project</button>
+            </div>
+            <div id="project-list" class="list list-scroll"></div>
+          </aside>
+          <main class="panel">
+            <div id="proj-empty" class="error">Select a project or create one. MongoDB is required for KB and AI history.</div>
+            <div id="proj-editor" style="display: none">
+              <input class="field" id="proj-name" placeholder="Project name" />
+              <textarea class="code" id="proj-desc" style="min-height: 56px" placeholder="Short description"></textarea>
+              <label class="pill">Goals / outline</label>
+              <textarea class="code" id="proj-goals" style="min-height: 72px"></textarea>
+              <label class="pill">Purpose / intent</label>
+              <textarea class="code" id="proj-purpose" style="min-height: 72px"></textarea>
+              <label class="pill">Working rules / details</label>
+              <textarea class="code" id="proj-details" style="min-height: 100px"></textarea>
+              <div class="row">
+                <button type="button" id="btn-proj-save">Save project</button>
+                <button type="button" class="danger secondary" id="btn-proj-delete">Delete</button>
+              </div>
+              <h2>Team (persons + coordination)</h2>
+              <div class="row">
+                <select class="field" id="proj-member-role" style="flex: 1"></select>
+                <select class="field" id="proj-member-coord" style="max-width: 140px">
+                  <option value="backend">backend</option>
+                  <option value="frontend">frontend</option>
+                  <option value="testing">testing</option>
+                  <option value="general" selected>general</option>
+                </select>
+                <button type="button" id="btn-proj-member-add">Add</button>
+              </div>
+              <div id="proj-members-list" class="list"></div>
+              <h2>Tasks → match to team</h2>
+              <p class="hint">
+                Required skills are matched by substring to each member’s skill tags. Only people already on the team are
+                considered. Chat still uses Agents, not Persons.
+              </p>
+              <input class="field" id="proj-task-title" placeholder="Task title" />
+              <input
+                class="field"
+                id="proj-task-skills"
+                placeholder="Required skills, comma-separated (e.g. React, MySQL, 前端)"
+              />
+              <div class="row">
+                <button type="button" id="btn-proj-task-add">Add task</button>
+              </div>
+              <div id="proj-task-list" class="list"></div>
+              <pre
+                class="preview-box"
+                id="proj-task-match-out"
+                style="display: none; white-space: pre-wrap; max-height: 220px; overflow: auto"
+              ></pre>
+              <h2>Linked agents</h2>
+              <p class="hint">Associate prompt templates (agents) with this project for documentation and workflows.</p>
+              <div class="row">
+                <select class="field" id="proj-agent-template" style="flex: 1"></select>
+                <button type="button" id="btn-proj-agent-add">Link agent</button>
+              </div>
+              <div id="proj-agent-list" class="list"></div>
+              <h2>Knowledge base (MongoDB)</h2>
+              <input class="field" id="kb-title" placeholder="KB entry title" />
+              <textarea class="code" id="kb-content" style="min-height: 80px" placeholder="Content"></textarea>
+              <div class="row">
+                <button type="button" id="btn-kb-add">Add KB entry</button>
+              </div>
+              <div id="proj-kb-list" class="list"></div>
+              <h2>AI work strategy</h2>
+              <p class="hint">Uses project outline, members, and KB excerpts to ask the LLM for a phased execution plan.</p>
+              <select class="field" id="strat-provider">
+                <option value="deepseek">deepseek</option>
+                <option value="qwen">qwen</option>
+                <option value="yuanbao">yuanbao</option>
+              </select>
+              <div class="row">
+                <button type="button" id="btn-strat-gen">Generate strategy</button>
+              </div>
+              <pre class="preview-box" id="strat-output" style="white-space: pre-wrap; display: none; max-height: 280px; overflow: auto"></pre>
+              <h2>Living Markdown (versioned)</h2>
+              <p class="hint">
+                Edit the Markdown below; each <strong>Save as new version</strong> appends v2, v3, … The version dropdown
+                lists all revisions. Deleting removes the whole document and its history.
+              </p>
+              <div class="row">
+                <input class="field" id="md-new-title" placeholder="New document title" style="flex: 1" />
+                <button type="button" id="btn-md-create">Create doc</button>
+                <button type="button" class="secondary" id="btn-md-from-strategy">From strategy output</button>
+              </div>
+              <div id="md-doc-list" class="list"></div>
+              <div id="md-doc-panel" style="display: none">
+                <div class="row" style="flex-wrap: wrap; gap: 0.5rem">
+                  <input class="field" id="md-doc-title" placeholder="Document title" style="flex: 1; min-width: 160px" />
+                  <button type="button" class="secondary" id="btn-md-save-title">Save title</button>
+                  <button type="button" class="danger secondary" id="btn-md-delete-doc">Delete document</button>
+                </div>
+                <div class="row" style="flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem">
+                  <select class="field" id="md-version-sel" style="max-width: 120px"></select>
+                  <button type="button" class="secondary" id="btn-md-refresh">Reload version</button>
+                  <input
+                    class="field"
+                    id="md-version-note"
+                    placeholder="Version note (optional)"
+                    style="flex: 1; min-width: 140px"
+                  />
+                  <button type="button" id="btn-md-save-version">Save as new version</button>
+                </div>
+                <div class="md-layout">
+                  <div id="md-render" class="md-prose"></div>
+                  <div>
+                    <label class="pill">Source Markdown (editable)</label>
+                    <textarea class="code" id="md-raw" style="min-height: 220px"></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </section>
+      </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

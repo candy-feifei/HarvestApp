@@ -1,0 +1,28 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - prompt_std_mongo:/data/db
+
+  prompt-standardizer:
+    build: .
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongo
+    volumes:
+      - prompt_std_data:/data
+    environment:
+      PROMPT_STD_DATA_DIR: /data
+      PROMPT_STD_MONGO_URI: mongodb://mongo:27017
+      PROMPT_STD_MONGO_DB: prompt_std
+      # Optional: mount secrets via env file
+      PROMPT_STD_DEEPSEEK_API_KEY: sk-0e8bda82bb604c1fa7bc5c50933df399
+      # PROMPT_STD_QWEN_API_KEY:
+      # PROMPT_STD_YUANBAO_BASE_URL:
+      # PROMPT_STD_YUANBAO_API_KEY:
+
+volumes:
+  prompt_std_data:
+  prompt_std_mongo:
